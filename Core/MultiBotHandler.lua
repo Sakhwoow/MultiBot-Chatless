@@ -1771,8 +1771,10 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			return
 		end
 
-		if(MultiBot.isInside(arg1, "remove: ")) then
-			local tName = string.sub(arg1, 9, string.find(arg1, " ", 9) - 1)
+		if(MultiBot.isInside(arg1, "remove: ", "удалён: ", "удален: ")) then
+			local colonPos = string.find(arg1, ": ")
+			local nameStart = colonPos + 2
+			local tName = string.sub(arg1, nameStart, (string.find(arg1, " ", nameStart) or #arg1 + 2) - 1)
 			local tFrame = MultiBot.frames["MultiBar"].frames["Units"].frames[tName]
 			local tButton = MultiBot.frames["MultiBar"].frames["Units"].buttons[tName]
 			if(tButton == nil) then return end

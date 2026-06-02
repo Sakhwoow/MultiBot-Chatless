@@ -1913,6 +1913,7 @@ local function parseRosterEntry(entry)
     alive = fields[5] == "1",
     hpPct = tonumber(fields[6] or "0") or 0,
     mpPct = tonumber(fields[7] or "0") or 0,
+    online = fields[8] == nil or fields[8] == "1",
   }
 end
 

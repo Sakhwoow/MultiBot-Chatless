@@ -1937,7 +1937,7 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
           MultiBot.BindUnitToggleHandlers(button, { requireEnabledStateOnRight = true })
         end
 
-        if isActive then
+        if isActive and entry.online ~= false then
           if MultiBot.index.classes.actives[botClass] == nil then
             MultiBot.index.classes.actives[botClass] = {}
           end

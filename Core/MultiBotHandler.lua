@@ -1789,7 +1789,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			return
 		end
 
-		if(arg1 == "Enable player botAI") then
+		if(arg1 == "ИИ бота игрока включён") then
 			local tName = UnitName("player")
 			local tButton = MultiBot.frames["MultiBar"].frames["Units"].buttons[tName]
 			if(tButton == nil) then return end
@@ -1803,7 +1803,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			return
 		end
 
-		if(arg1 == "Disable player botAI") then
+		if(arg1 == "ИИ бота игрока отключён") then
 			local tName = UnitName("player")
 			local tFrame = MultiBot.frames["MultiBar"].frames["Units"].frames[tName]
 			local tButton = MultiBot.frames["MultiBar"].frames["Units"].buttons[tName]

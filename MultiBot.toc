@@ -25,6 +25,7 @@ Libs\LibDropdown-1.0\LibDropdown-1.0.lua
 
 
 Core\MultiBot.lua
+Core\MultiBotEngine.lua
 Core\MultiBotComm.lua
 Core\MultiBotStore.lua
 Core\MultiBotConfig.lua
@@ -48,7 +49,6 @@ Data\HunterPetList_1.lua
 Data\HunterPetList_2.lua
 Data\HunterPetList_3.lua
 Data\HunterPetList_4.lua
-Core\MultiBotEngine.lua
 Core\MultiBotHandler.lua
 Strategies\MultiBotDeathKnight.lua
 Strategies\MultiBotDruid.lua

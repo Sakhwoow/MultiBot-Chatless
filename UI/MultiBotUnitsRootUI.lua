@@ -708,10 +708,22 @@ local function createFactionBanner(unitsFrame)
     local button = allianceFrame.addButton("FactionBanner", 0, 0, bannerIcon, MultiBot.L("tips.units.alliance"))
     button:doShow()
     button.doRight = function()
-        SendChatMessage(".playerbot bot remove *", "SAY")
+        local units = MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames["Units"]
+        if not units then return end
+        for name, btn in pairs(units.buttons) do
+            if btn and btn.roster == "players" and btn.state and name ~= UnitName("player") then
+                SendChatMessage(".playerbot bot remove " .. name, "SAY")
+            end
+        end
     end
     button.doLeft = function()
-        SendChatMessage(".playerbot bot add *", "SAY")
+        local units = MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames["Units"]
+        if not units then return end
+        for name, btn in pairs(units.buttons) do
+            if btn and btn.roster == "players" and not btn.state and name ~= UnitName("player") then
+                SendChatMessage(".playerbot bot add " .. name, "SAY")
+            end
+        end
     end
 
     return allianceFrame, button
@@ -813,6 +825,10 @@ local function createPvpStatsControls(controlFrame)
     end
 
     local function requestBridgePvpStats(botName)
+        if MultiBot.allowLegacyChatFallback then
+            return false
+        end
+
         local comm = MultiBot.Comm or nil
 
         if comm and comm.RequestPvpStats and comm.RequestPvpStats(botName) then

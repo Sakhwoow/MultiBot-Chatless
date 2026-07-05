@@ -1,11 +1,11 @@
 if not MultiBot then return end
 
 local INVENTORY_WINDOW_DEFAULTS = {
-    width = 520,
+    width = 600,
     height = 470,
     pointX = -700,
     pointY = -144,
-    actionsWidth = 110,
+    actionsWidth = 135,
     panelInset = 8,
     panelGap = 6,
     buttonSize = 32,
@@ -78,6 +78,7 @@ local function isTradeInventoryDumpStart(message)
 
     return string.find(message, "Inventory", 1, true) ~= nil
         or string.find(message, "背包", 1, true) ~= nil
+        or string.find(message, "Инвентарь", 1, true) ~= nil
 end
 
 local function isTradeInventoryDumpEnd(message)
@@ -566,17 +567,17 @@ local function updateModeLabel()
         return
     end
 
-    local actionLabel = MultiBot.L("info.action", "Action")
+    local actionLabel = MultiBot.L("info.inventory.action_label", "Action")
     local actionValues = {
         [""] = "-",
-        s = "Sell",
-        e = "Equip",
-        u = "Use",
-        give = "Trade",
+        s = MultiBot.L("info.inventory.action.sell", "Sell"),
+        e = MultiBot.L("info.inventory.action.equip", "Equip"),
+        u = MultiBot.L("info.inventory.action.use", "Use"),
+        give = MultiBot.L("info.inventory.action.trade", "Trade"),
         bank = MultiBot.L("inventory.mode.bank", "Bank"),
         gb = MultiBot.L("inventory.mode.gbank", "Guild Bank"),
         b = MultiBot.L("inventory.mode.buy", "Buy"),
-        destroy = "Destroy",
+        destroy = MultiBot.L("info.inventory.action.destroy", "Destroy"),
     }
 
     inventory.modeLabel:SetText(actionLabel .. ":")
@@ -825,6 +826,69 @@ local function requestInventoryForBot(botName)
     return MultiBot.RequestInventoryRefresh(botName)
 end
 
+local function readVendorItems()
+    local count = GetMerchantNumItems and GetMerchantNumItems() or 0
+    if count <= 0 then
+        MultiBot.vendorItems = nil
+        return
+    end
+    local vendorItems = {}
+    for i = 1, count do
+        local name, texture, price = GetMerchantItemInfo(i)
+        local link = GetMerchantItemLink and GetMerchantItemLink(i)
+        if name and link then
+            vendorItems[#vendorItems + 1] = { name = name, texture = texture, link = link, price = price }
+        end
+    end
+    MultiBot.vendorItems = #vendorItems > 0 and vendorItems or nil
+end
+
+local function showVendorItemsInInventory()
+    local inventory = MultiBot.inventory
+    if not inventory then return end
+    local items = inventory.frames and inventory.frames.Items
+    if not items then return end
+    local vendorData = MultiBot.vendorItems
+    if not vendorData or #vendorData == 0 then return end
+
+    items:clear()
+    inventory.showingVendorItems = true
+
+    local botName = inventory.name
+    for idx, vendorItem in ipairs(vendorData) do
+        local posX, posY = items:getNextSlotPosition()
+        local button = items.addButton("vnd_" .. idx, posX, posY, vendorItem.texture, vendorItem.link)
+        if button then
+            button.layoutIndex = items.index
+            button.item = { name = vendorItem.name, link = vendorItem.link, icon = vendorItem.texture }
+            button.doLeft = function(btn)
+                if not botName or botName == "" then return end
+                SendChatMessage("b " .. btn.tip, "WHISPER", nil, botName)
+            end
+            items.index = (items.index or 0) + 1
+        end
+    end
+
+    items:updateCanvas()
+
+    if inventory.helperText then
+        inventory.helperText:SetText(MultiBot.L("info.inventory.vendor_items", "Vendor items"))
+    end
+end
+
+local function clearVendorItemsFromInventory()
+    local inventory = MultiBot.inventory
+    if not inventory then return end
+    inventory.showingVendorItems = false
+    local items = inventory.frames and inventory.frames.Items
+    if items and items.clear then
+        items:clear()
+    end
+    if inventory.name and inventory.name ~= "" then
+        requestInventoryForBot(inventory.name)
+    end
+end
+
 MultiBot.RequestBotInventory = function(botName)
     if not botName or botName == "" then
         return false
@@ -967,6 +1031,15 @@ local function setInventoryActionState(buttonKey, options)
     end
 
     updateModeLabel()
+    if previousAction == "b" and inventory.action ~= "b" then
+        clearVendorItemsFromInventory()
+    elseif inventory.action == "b" then
+        if MultiBot.vendorItems then
+            showVendorItemsInInventory()
+        elseif inventory.helperText then
+            inventory.helperText:SetText(MultiBot.L("info.inventory.open_vendor", "Open vendor window"))
+        end
+    end
 end
 
 local function toggleInventoryAction(buttonKey, button)
@@ -1587,3 +1660,22 @@ function MultiBot.InitializeInventoryFrame()
 
     return inventory
 end
+
+local vendorEventFrame = CreateFrame("Frame")
+vendorEventFrame:RegisterEvent("MERCHANT_SHOW")
+vendorEventFrame:RegisterEvent("MERCHANT_CLOSED")
+vendorEventFrame:SetScript("OnEvent", function(_, event)
+    if event == "MERCHANT_SHOW" then
+        readVendorItems()
+        local inv = MultiBot.inventory
+        if inv and inv.action == "b" then
+            showVendorItemsInInventory()
+        end
+    elseif event == "MERCHANT_CLOSED" then
+        MultiBot.vendorItems = nil
+        local inv = MultiBot.inventory
+        if inv and inv.showingVendorItems then
+            clearVendorItemsFromInventory()
+        end
+    end
+end)

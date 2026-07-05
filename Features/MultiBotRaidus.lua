@@ -174,7 +174,7 @@ local function initRaidusAceWindow()
 
     raidusUsesAceWindow = true
 
-    window:SetTitle("MultiBot - Raidus")
+    window:SetTitle("MultiBot - Компоновщик рейда")
     window:SetWidth(920)
     window:SetHeight(630)
     window:EnableResize(false)
@@ -399,11 +399,11 @@ local RAIDUS_ROLE_COLORS = {
 
 local function formatRaidusRoleLabel(role)
     if role == "TANK" then
-        return "Tank"
+        return "Танк"
     elseif role == "HEAL" then
-        return "Heal"
+        return "Лекарь"
     end
-    return "DPS"
+    return "ДПС"
 end
 
 local function getRaidusClassHexColor(className)
@@ -880,6 +880,7 @@ local function styleRaidusActionButton(button, isPrimary)
 end
 
 local btnLoad = styleRaidusActionButton(MultiBot.raidus.wowButton("Load", -762 + RAIDUS_ACTION_SHIFT_X, RAIDUS_ACTION_BAR_Y, 80, 20, 12), false)
+btnLoad.text:SetText("|cffffcc00Загрузить|r")
 btnLoad.doLeft = function(pButton)
 	local layoutData = getRaidusLayoutValue(MultiBot.raidus.save)
 	if(layoutData == nil or layoutData == "") then
@@ -892,9 +893,9 @@ btnLoad.doLeft = function(pButton)
 end
 
 local function UpdateRaidusSlotButtonText(button)
-	local label = "Slot"
+	local label = "Слот"
 	if MultiBot.raidus.save ~= "" then
-		label = "Slot " .. MultiBot.raidus.save
+		label = "Слот " .. MultiBot.raidus.save
 	end
 	button.text:SetText("|cffffcc00" .. label .. "|r")
 end
@@ -977,6 +978,7 @@ local classWidth  = 60
 
 -- Bouton "Score"
 local btnScore = MultiBot.raidus.wowButton("Score", sortBaseX, sortY, scoreWidth, 20, 12)
+btnScore.text:SetText("|cffffcc00Очки|r")
 btnScore.setEnable()
 updateRaidusSortButtonsVisual("Score")
 btnScore:SetScript("OnEnter", function(self)
@@ -1010,6 +1012,7 @@ local btnLevel = MultiBot.raidus.wowButton(
     20,
     12
 )
+btnLevel.text:SetText("|cffffcc00Уровень|r")
 btnLevel.setDisable()
 btnLevel:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1042,6 +1045,7 @@ local btnClass = MultiBot.raidus.wowButton(
     20,
     12
 )
+btnClass.text:SetText("|cffffcc00Класс|r")
 btnClass.setDisable()
 btnClass:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1066,9 +1070,10 @@ btnClass.doLeft = function(pButton)
 end
 
 local btnSave = styleRaidusActionButton(MultiBot.raidus.wowButton("Save", -597 + RAIDUS_ACTION_SHIFT_X, RAIDUS_ACTION_BAR_Y, 80, 20, 12), false)
+btnSave.text:SetText("|cffffcc00Сохранить|r")
 btnSave.doLeft = function(pButton)
 	setRaidusLayoutValue(MultiBot.raidus.save, serializeRaidusLayoutFromFrames())
-	SendChatMessage("I wrote it down.", "SAY")
+	SendChatMessage("Компоновка сохранена.", "SAY")
 end
 
 local function collectRaidusApplyInviteList(raidByName, selfName)
@@ -1123,13 +1128,13 @@ local function announceRaidusApplySelection(selectedCount, inviteList, usedLayou
     local selectedList = inviteCount > 0 and table.concat(inviteList, ", ") or ""
 
     if usedLayoutFallback then
-        SendChatMessage("Raidus Apply: using layout list, selected=" .. selectedCount .. " toInvite=" .. inviteCount, "SAY")
+        SendChatMessage("Компоновщик: по списку компоновки, выбрано=" .. selectedCount .. " приглашений=" .. inviteCount, "SAY")
     else
-        SendChatMessage("Raidus Apply: selected=" .. selectedCount .. " toInvite=" .. inviteCount, "SAY")
+        SendChatMessage("Компоновщик: выбрано=" .. selectedCount .. " приглашений=" .. inviteCount, "SAY")
     end
 
     if selectedList ~= "" then
-        SendChatMessage("Raidus Apply list: " .. selectedList, "SAY")
+        SendChatMessage("Компоновщик список: " .. selectedList, "SAY")
     end
 end
 
@@ -1149,6 +1154,7 @@ local function startRaidusApplyInviteOrSort(inviteCount)
 end
 
 local btnApply = styleRaidusActionButton(MultiBot.raidus.wowButton("Apply", -514 + RAIDUS_ACTION_SHIFT_X, RAIDUS_ACTION_BAR_Y, 80, 20, 12), true)
+btnApply.text:SetText("|cffffcc00Расставить|r")
 btnApply.doLeft = function(pButton)
     local tRaidByIndex, tRaidByName = MultiBot.raidus.getRaidTarget()
     if(tRaidByIndex == nil or tRaidByName == nil) then return end
@@ -1171,6 +1177,7 @@ end
 -- Clic gauche  : équilibrage simple par score
 -- Clic droit   : équilibrage avancé Tank / Heal / DPS
 local btnAuto = styleRaidusActionButton(MultiBot.raidus.wowButton("Auto", -431 + RAIDUS_ACTION_SHIFT_X, RAIDUS_ACTION_BAR_Y, 80, 20, 12), true)
+btnAuto.text:SetText("|cffffcc00Авто|r")
 
 btnAuto:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1295,6 +1302,8 @@ local function appendRaidusBotIfValid(bots, name, value)
 end
 
 MultiBot.raidus.setRaidus = function()
+	if MultiBot.AutoPopulateFromGroupAPI then MultiBot.AutoPopulateFromGroupAPI() end
+
 	local tPool = MultiBot.raidus.frames["Pool"]
 	local tSlot = 1
 	local tY = 426
@@ -1385,12 +1394,12 @@ MultiBot.raidus.setRaidus = function()
 			pButton.tip = MultiBot.newFrame(pButton, -pButton.size, 160, 28, 256, 512, "TOPRIGHT")
 			pButton.tip.addTexture("Interface\\AddOns\\MultiBot\\Textures\\Raidus_Wanted.blp")
 			pButton.tip.addModel(botName, 0, 64, 160, 240, 1.0)
-			pButton.tip.addText("1", "|cff555555- WANTED -|h", "TOP", 0, -30, 24)
-			pButton.tip.addText("2", "|cff555555-DEAD OR ALIVE-|h", "TOP", 0, -55, 24)
+			pButton.tip.addText("1", "|cff555555- РАЗЫСКИВАЕТСЯ -|h", "TOP", 0, -30, 24)
+			pButton.tip.addText("2", "|cff555555-ЖИВЫМ ИЛИ МЁРТВЫМ-|h", "TOP", 0, -55, 24)
 			pButton.tip.addText("3", "|cff333333" .. botName .. " - " .. botGender .. " - " .. botRace .. "|h", "BOTTOM", 0, 224, 15)
 			pButton.tip.addText("4", "|c" .. classHex .. botClass .. "|r  |cff909090(" .. botSpecial .. ")|r", "BOTTOM", 0, 206, 15)
-			pButton.tip.addText("5", "|c" .. roleHex .. formatRaidusRoleLabel(botRole) .. "|r  |cff333333Score:|r |cffffdd55" .. botScore .. "|r", "BOTTOM", 0, 188, 15)
-			pButton.tip.addText("6", "|cff333333Talents:|r |cff505050" .. botTalents .. "|r", "BOTTOM", 0, 172, 14)
+			pButton.tip.addText("5", "|c" .. roleHex .. formatRaidusRoleLabel(botRole) .. "|r  |cff333333Очки:|r |cffffdd55" .. botScore .. "|r", "BOTTOM", 0, 188, 15)
+			pButton.tip.addText("6", "|cff333333Таланты:|r |cff505050" .. botTalents .. "|r", "BOTTOM", 0, 172, 14)
 			pButton.tip.addText("7", "|cff555555CASH - " .. tReward .. " - GOLD|h", "BOTTOM", 0, 154, 20)
 			pButton.tip:Show()
 		end)
@@ -1446,9 +1455,9 @@ MultiBot.raidus.setRaidus = function()
                     playRaidusDropPulse(tDrag)
                     if targetGroup then
                         if swappedName and swappedName ~= "" and swappedName ~= tDrag.name then
-                            showRaidusDropFeedback("Echange avec " .. swappedName .. " -> " .. targetGroup .. " / " .. targetSlot)
+                            showRaidusDropFeedback("Обмен с " .. swappedName .. " -> " .. targetGroup .. " / " .. targetSlot)
                         else
-                            showRaidusDropFeedback("Ajoute dans " .. targetGroup .. " / " .. targetSlot)
+                            showRaidusDropFeedback("Добавлен в " .. targetGroup .. " / " .. targetSlot)
                         end
                     end
                 else
@@ -1507,7 +1516,7 @@ MultiBot.raidus.setRaidus = function()
 		local groupY = 182
 
 		ApplyRaidusGroupCardChrome(tGroup, i)
-		tGroup.addText("GroupName", "|cffffcc00Group" .. i .. "|r", "BOTTOM", -20, 223, 12)
+		tGroup.addText("GroupName", "|cffffcc00Группа " .. i .. "|r", "BOTTOM", -20, 223, 12)
 		tGroup.addText("GroupScoreBadge", formatRaidusBadgeLabel(0), "BOTTOM", 52, 223, 11)
 		tGroup.group = "Group" .. i
 		tGroup.score = 0
@@ -1565,8 +1574,8 @@ MultiBot.raidus.getRaidTarget = function()
 		end
 	end)
 
-	if(tBots) then return SendChatMessage("There is no Bot in the Raid", "SAY") end
-	if(tUser) then return SendChatMessage("Place me in a Raidus raid group slot before clicking Apply.", "SAY") end
+	if(tBots) then return SendChatMessage("В компоновке нет ботов.", "SAY") end
+	if(tUser) then return SendChatMessage("Поместите себя в слот рейдовой группы перед применением.", "SAY") end
 	return tRaidByIndex, tRaidByName
 end
 
@@ -1802,7 +1811,7 @@ MultiBot.raidus.autoBalanceRaid = function(mode)
     local botCount = #bots
 
     if botCount == 0 then
-        SendChatMessage("Auto balance raid : No bots selectd", "SAY")
+        SendChatMessage("Автобаланс: нет ботов для распределения.", "SAY")
         return
     end
 

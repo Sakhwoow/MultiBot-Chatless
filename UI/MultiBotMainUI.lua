@@ -587,7 +587,7 @@ local function updatePullControlWaitLabel(frame)
         return
     end
 
-    frame.waitLabel:SetText("Wait: " .. tostring(frame._mbWaitTime or 0) .. "s")
+    frame.waitLabel:SetText("Задержка: " .. tostring(frame._mbWaitTime or 0) .. "с")
 end
 
 local function setPullControlStates(frame, wait, focus, dpsAssist, dpsAoe)
@@ -631,11 +631,11 @@ local function createPullControlFrame(mainFrame, pullButton)
     frame.title = frame:CreateFontString(nil, "ARTWORK")
     frame.title:SetFont("Fonts\\ARIALN.ttf", 12, "OUTLINE")
     frame.title:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -8)
-    frame.title:SetText("Pull Control")
+    frame.title:SetText("Контроль пула")
 
-    createPullControlScopeButton(frame, "ScopeBot", 10, "Selected", "tips.main.pullscopebot", "BOT")
-    createPullControlScopeButton(frame, "ScopeGroup", 82, "Party", "tips.main.pullscopegroup", "GROUP")
-    createPullControlScopeButton(frame, "ScopeAll", 154, "Raid", "tips.main.pullscopeall", "ALL")
+    createPullControlScopeButton(frame, "ScopeBot", 10, "Выбранный", "tips.main.pullscopebot", "BOT")
+    createPullControlScopeButton(frame, "ScopeGroup", 82, "Группа", "tips.main.pullscopegroup", "GROUP")
+    createPullControlScopeButton(frame, "ScopeAll", 154, "Рейд", "tips.main.pullscopeall", "ALL")
     frame.scopeButtons.ScopeBot:SetButtonState("PUSHED", true)
 
     frame.waitLabel = frame:CreateFontString(nil, "ARTWORK")
@@ -891,8 +891,8 @@ local function createCombatStrategiesButton(mainFrame)
 	})
 	controlFrame.edge:SetBackdropBorderColor(0.85, 0.85, 0.85, 0.85)
 
-	createCombatStrategiesHeader(controlFrame, "Party", 10)
-	createCombatStrategiesHeader(controlFrame, "Raid", 50)
+	createCombatStrategiesHeader(controlFrame, "Группа", 10)
+	createCombatStrategiesHeader(controlFrame, "Рейд", 50)
 
 	addMainCombatStrategyButton(controlFrame, "CombatPartyAvoidAoe", 12, -26, "spell_shadow_antishadow", "tips.main.combat.party.avoidaoe", "GROUP", "avoid aoe")
 	addMainCombatStrategyButton(controlFrame, "CombatRaidAvoidAoe", 52, -26, "spell_shadow_antishadow.blp", "tips.main.combat.raid.avoidaoe", "ALL", "avoid aoe")
@@ -1282,15 +1282,15 @@ function MultiBot.InitializeMainUI(tMultiBar)
 
     local defaultMainButtonOrder = {
         "Coords",
-        "Masters",
+        -- "Masters",
         "RTSC",
         "Raidus",
-        "Creator",
-        "Beast",
-        "Disperse",
+        -- "Creator",
+        -- "Beast",
+        -- "Disperse",
         "Loot",
         "Expand",
-        "Release",
+        -- "Release",
         "Stats",
         "Reward",
         "CombatStrategies",
@@ -1365,17 +1365,17 @@ function MultiBot.InitializeMainUI(tMultiBar)
     })
     wireShiftRightSwap(mainFrame.buttons["Coords"], "Coords")
 
-    createMainActionButton(mainFrame, {
-        name = "Masters",
-        y = 34,
-        icon = "mail_gmicon",
-        tip = "tips.main.masters",
-        disabled = true,
-        doLeft = function(button)
-            toggleMasters(button)
-        end,
-    })
-    wireShiftRightSwap(mainFrame.buttons["Masters"], "Masters")
+    -- createMainActionButton(mainFrame, {
+    --     name = "Masters",
+    --     y = 34,
+    --     icon = "mail_gmicon",
+    --     tip = "tips.main.masters",
+    --     disabled = true,
+    --     doLeft = function(button)
+    --         toggleMasters(button)
+    --     end,
+    -- })
+    -- wireShiftRightSwap(mainFrame.buttons["Masters"], "Masters")
 
     createMainActionButton(mainFrame, {
         name = "RTSC",
@@ -1401,41 +1401,41 @@ function MultiBot.InitializeMainUI(tMultiBar)
     })
     wireShiftRightSwap(mainFrame.buttons["Raidus"], "Raidus")
 
-    createMainActionButton(mainFrame, {
-        name = "Creator",
-        y = 136,
-        icon = "inv_helmet_145a",
-        tip = "tips.main.creator",
-        disabled = true,
-        doLeft = function(button)
-            toggleCreator(button)
-        end,
-    })
-    wireShiftRightSwap(mainFrame.buttons["Creator"], "Creator")
+    -- createMainActionButton(mainFrame, {
+    --     name = "Creator",
+    --     y = 136,
+    --     icon = "inv_helmet_145a",
+    --     tip = "tips.main.creator",
+    --     disabled = true,
+    --     doLeft = function(button)
+    --         toggleCreator(button)
+    --     end,
+    -- })
+    -- wireShiftRightSwap(mainFrame.buttons["Creator"], "Creator")
 
-    createMainActionButton(mainFrame, {
-        name = "Beast",
-        y = 170,
-        icon = "ability_mount_swiftredwindrider",
-        tip = "tips.main.beast",
-        disabled = true,
-        doLeft = function(button)
-            toggleBeast(button)
-        end,
-    })
-    wireShiftRightSwap(mainFrame.buttons["Beast"], "Beast")
+    -- createMainActionButton(mainFrame, {
+    --     name = "Beast",
+    --     y = 170,
+    --     icon = "ability_mount_swiftredwindrider",
+    --     tip = "tips.main.beast",
+    --     disabled = true,
+    --     doLeft = function(button)
+    --         toggleBeast(button)
+    --     end,
+    -- })
+    -- wireShiftRightSwap(mainFrame.buttons["Beast"], "Beast")
 
-    createMainActionButton(mainFrame, {
-        name = "Disperse",
-        y = 204,
-        icon = "spell_nature_wispsplode",
-        tip = "tips.main.disperse",
-        disabled = true,
-        doLeft = function(button)
-            toggleDisperse(button)
-        end,
-    })
-    wireShiftRightSwap(mainFrame.buttons["Disperse"], "Disperse")
+    -- createMainActionButton(mainFrame, {
+    --     name = "Disperse",
+    --     y = 204,
+    --     icon = "spell_nature_wispsplode",
+    --     tip = "tips.main.disperse",
+    --     disabled = true,
+    --     doLeft = function(button)
+    --         toggleDisperse(button)
+    --     end,
+    -- })
+    -- wireShiftRightSwap(mainFrame.buttons["Disperse"], "Disperse")
 
     createMainActionButton(mainFrame, {
         name = "Loot",
@@ -1461,17 +1461,17 @@ function MultiBot.InitializeMainUI(tMultiBar)
     })
     wireShiftRightSwap(mainFrame.buttons["Expand"], "Expand")
 
-    createMainActionButton(mainFrame, {
-        name = "Release",
-        y = 306,
-        icon = "achievement_bg_xkills_avgraveyard",
-        tip = "tips.main.release",
-        disabled = true,
-        doLeft = function(button)
-            toggleRelease(button)
-        end,
-    })
-    wireShiftRightSwap(mainFrame.buttons["Release"], "Release")
+    -- createMainActionButton(mainFrame, {
+    --     name = "Release",
+    --     y = 306,
+    --     icon = "achievement_bg_xkills_avgraveyard",
+    --     tip = "tips.main.release",
+    --     disabled = true,
+    --     doLeft = function(button)
+    --         toggleRelease(button)
+    --     end,
+    -- })
+    -- wireShiftRightSwap(mainFrame.buttons["Release"], "Release")
 
     createMainActionButton(mainFrame, {
         name = "Stats",

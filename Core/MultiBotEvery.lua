@@ -34,13 +34,17 @@ local function runBotCombatCommand(button, command)
     return false
   end
 
-  local comm = MultiBot and MultiBot.Comm or nil
-  if comm and comm.RunCombatCommand and comm.RunCombatCommand("BOT", botName, command) then
-    return true
+  if not (MultiBot.allowLegacyChatFallback) then
+    local comm = MultiBot and MultiBot.Comm or nil
+    if comm and comm.RunCombatCommand and comm.RunCombatCommand("BOT", botName, command) then
+      return true
+    end
+    showEveryMessage(MultiBot.L("tips.every.combatbridge", "Bridge unavailable: combat command was not sent."))
+    return false
   end
 
-  showEveryMessage(MultiBot.L("tips.every.combatbridge", "Bridge unavailable: combat command was not sent."))
-  return false
+  SendChatMessage(command, "WHISPER", nil, botName)
+  return true
 end
 
 local function runBotCombatToggle(button, enableCommand, disableCommand)
@@ -230,12 +234,13 @@ MultiBot.addEvery = function(pFrame, pCombat, pNormal)
 		end
 	end
 
-	pFrame.addButton("Trainer", 394, 0, "spell_holy_magicalsentry", MultiBot.L("tips.every.trainer", "Trainer")).setDisable()
-	.doLeft = function(pButton)
-		if(MultiBot.OpenBotTrainer) then
-			MultiBot.OpenBotTrainer(pButton.getName(), pButton)
-		end
-	end
+	-- Trainer требует бридж — скрыто в legacy-режиме
+	-- pFrame.addButton("Trainer", 394, 0, "spell_holy_magicalsentry", MultiBot.L("tips.every.trainer", "Trainer")).setDisable()
+	-- .doLeft = function(pButton)
+	-- 	if(MultiBot.OpenBotTrainer) then
+	-- 		MultiBot.OpenBotTrainer(pButton.getName(), pButton)
+	-- 	end
+	-- end
 
 	local botName = pFrame.getName and pFrame.getName() or nil
 	if MultiBot.BuildBotRTIUI and botName and botName ~= "" then

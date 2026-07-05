@@ -257,8 +257,8 @@ function MultiBot.InitializeTalentFrameModule()
         },
         GLYPH = MultiBot.TalentFrameKeys.GLYPH_OVERVIEW,
     }
-    MultiBot.TalentTabDefaults = MultiBot.TalentTabDefaults or { ACTIVE = MultiBot.TalentFrameKeys.TALENTS, ACTIVE_LABEL = "Talents" }
-    MultiBot.TalentTabLabels = MultiBot.TalentTabLabels or { GLYPHS = "Glyphs", CUSTOM_TALENTS = "Custom Talents", CUSTOM_GLYPHS = "Custom Glyphs", COPY = MultiBot.L("info.talent.Copy"), APPLY = MultiBot.L("info.talent.Apply") }
+    MultiBot.TalentTabDefaults = MultiBot.TalentTabDefaults or { ACTIVE = MultiBot.TalentFrameKeys.TALENTS, ACTIVE_LABEL = MultiBot.L("info.talent.tab.talents", "Talents") }
+    MultiBot.TalentTabLabels = MultiBot.TalentTabLabels or { GLYPHS = MultiBot.L("info.talent.tab.glyphs", "Glyphs"), CUSTOM_TALENTS = MultiBot.L("info.talent.tab.custom_talents", "Custom Talents"), CUSTOM_GLYPHS = MultiBot.L("info.talent.tab.custom_glyphs", "Custom Glyphs"), COPY = MultiBot.L("info.talent.Copy"), APPLY = MultiBot.L("info.talent.Apply") }
     MultiBot.TalentTabStates = MultiBot.TalentTabStates or { TALENTS = "talents", GLYPHS = "glyphs", CUSTOM_TALENTS = "custom_talents", CUSTOM_GLYPHS = "custom_glyphs" }
     MultiBot.TalentTabContextProfiles = MultiBot.TalentTabContextProfiles or {
         [MultiBot.TalentTabStates.TALENTS] = { pointsVisible = true, showTalentTrees = true, copyVisible = true, copyActive = true, refreshApply = true },

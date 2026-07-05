@@ -65,6 +65,47 @@ local function RequestBridgeSnapshotAfterGroupReconnect()
 	end
 end
 
+local function AutoPopulateFromGroupAPI()
+	local playerName = UnitName("player")
+	local store = MultiBot.GetGlobalBotStore and MultiBot.GetGlobalBotStore() or {}
+	local isInRaid = GetNumRaidMembers and GetNumRaidMembers() > 0
+
+	local function processUnit(unitId)
+		local name = UnitName(unitId)
+		if not name or name == "" or name == playerName or name == "Unknown" then return end
+		if store[name] then return end
+
+		local _, classFileName = UnitClass(unitId)
+		if not classFileName then return end
+
+		local localRace = UnitRace(unitId)
+		local sex       = UnitSex(unitId)
+		local level     = UnitLevel(unitId)
+		local gender    = MultiBot.CASE and MultiBot.CASE(sex, "[N]", "[N]", "[M]", "[F]") or "[N]"
+
+		if MultiBot.ApplyBridgeBotDetail then
+			MultiBot.ApplyBridgeBotDetail({
+				name    = name,
+				class   = classFileName,
+				race    = localRace or "Unknown",
+				gender  = gender,
+				talent1 = 0,
+				talent2 = 0,
+				talent3 = 0,
+				level   = level or 0,
+				score   = 0,
+			})
+		end
+	end
+
+	if isInRaid then
+		for i = 1, GetNumRaidMembers() do processUnit("raid" .. i) end
+	else
+		for i = 1, GetNumPartyMembers() do processUnit("party" .. i) end
+	end
+end
+MultiBot.AutoPopulateFromGroupAPI = AutoPopulateFromGroupAPI
+
 local function ReconnectExistingGroupBots(reason)
 	if MultiBot._groupReconnectDone then
 		return false
@@ -120,10 +161,18 @@ function MultiBot.HandleOnUpdate(pElapsed)
 	if(MultiBot.auto.sort) then MultiBot.timer.sort.elapsed = MultiBot.timer.sort.elapsed + pElapsed end
 
 	if(MultiBot.auto.stats and MultiBot.timer.stats.elapsed >= MultiBot.timer.stats.interval) then
-		for i = 1, GetNumPartyMembers() do
-			local botName = UnitName("party" .. i)
-			if MultiBot.RequestStatsRefresh then
-				MultiBot.RequestStatsRefresh(botName)
+		if GetNumRaidMembers and GetNumRaidMembers() > 0 then
+			local _playerName = UnitName("player")
+			for i = 1, GetNumRaidMembers() do
+				local raidName = UnitName("raid" .. i)
+				if raidName and raidName ~= "" and raidName ~= _playerName then
+					if MultiBot.RequestStatsRefresh then MultiBot.RequestStatsRefresh(raidName) end
+				end
+			end
+		else
+			for i = 1, GetNumPartyMembers() do
+				local botName = UnitName("party" .. i)
+				if MultiBot.RequestStatsRefresh then MultiBot.RequestStatsRefresh(botName) end
 			end
 		end
 		MultiBot.timer.stats.elapsed = 0
@@ -1445,8 +1494,10 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 					MultiBot.TimerAfter(0.8, function()
 						ReconnectExistingGroupBots(event)
 					end)
+					MultiBot.TimerAfter(1.2, AutoPopulateFromGroupAPI)
 				else
 					ReconnectExistingGroupBots(event)
+					AutoPopulateFromGroupAPI()
 				end
 			end
 
@@ -1490,6 +1541,11 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 
                 if playersSize > 1 then
                     ReconnectExistingGroupBots("players-index")
+                    if LegacyChatFallbackEnabled() then
+                        MultiBot.TimerAfter(2.0, function()
+                            SendChatMessage(".playerbot bot list", "SAY")
+                        end)
+                    end
                     return
                 end
 
@@ -1554,10 +1610,11 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			end
 		end
 
-        -- Anti-dup: ignore the same "Bot roster:" line repeated in a short window
+        -- Anti-dup: ignore the same "Bot roster:" / "Список ботов:" line repeated in a short window
         do
           local text = (type(arg1) == "string") and arg1 or ""
           local roster = text:match("^%s*[Bb]ot%W+[Rr]oster:%s*(.+)$")
+                      or text:match("^%s*[Сс]писок%s+[Бб]отов:%s*(.+)$")
           if roster then
             MultiBot._lastRosterMsg = MultiBot._lastRosterMsg or { txt = nil, t = 0 }
             local now = (type(GetTime) == "function") and GetTime() or 0
@@ -1569,7 +1626,15 @@ function MultiBot.HandleMultiBotEvent(event, ...)
           end
         end
 
-		if(string.sub(arg1, 1, 12) == "Bot roster: ") then
+        local _rosterPrefixes = { "Bot roster: ", "Список ботов: " }
+        local _rosterOffset = nil
+        for _, _pfx in ipairs(_rosterPrefixes) do
+            if string.sub(arg1, 1, #_pfx) == _pfx then
+                _rosterOffset = #_pfx + 1
+                break
+            end
+        end
+		if(_rosterOffset ~= nil) then
 			MultiBot.dprint("SYS", "Bot roster received") -- DEBUG
 			MultiBot.dprint("UIready",
               (MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames and MultiBot.frames["MultiBar"].frames["Units"]) and true or false) -- DEBUG
@@ -1612,7 +1677,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			-- PLAYERBOTS --
 
 			-- On reste sur le format historique : "Bot roster: +Name Class, -Name Class, ..."
-			local tTable = MultiBot.doSplit(string.sub(arg1, 13), ", ")
+			local tTable = MultiBot.doSplit(string.sub(arg1, _rosterOffset), ", ")
 			MultiBot.dprint("ROSTER_PARSE_COUNT", #tTable) -- DEBUG
 
 			for key, value in pairs(tTable) do
@@ -1630,7 +1695,9 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 					--  - pas de nom vide
 					--  - pas de classe inconnue => on évite les boutons Unknown
 					if botName ~= "" and botClass and botClass ~= "Unknown" then
-						local botButton = MultiBot.addPlayer(botClass, botName).setDisable()
+						local isOnline = string.sub(rawNameToken, 1, 1) == "+"
+						local botButton = MultiBot.addPlayer(botClass, botName)
+						if isOnline then botButton.setEnable() else botButton.setDisable() end
 						bindUnitToggleHandlers(botButton, { requireEnabledStateOnRight = true })
 					else
 						MultiBot.dprint("ROSTER_SKIP_BAD_ENTRY",
@@ -1683,11 +1750,12 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			local memberLoopMax = (tGuildCount > 0) and tGuildCount or 50
 
 			for i = 1, memberLoopMax do
-				local memberName, _, _, memberLevel, memberClass = GetGuildRosterInfo(i)
+				local memberName, _, _, memberLevel, memberClass, _, _, _, memberOnline = GetGuildRosterInfo(i)
 
 				-- Ensure that the Counter is not bigger than the Amount of Members in Guildlist
 				if(memberName ~= nil and memberLevel ~= nil and memberClass ~= nil and memberName ~= UnitName("player")) then
-					local tMember = MultiBot.addMember(memberClass, memberLevel, memberName).setDisable()
+					local tMember = MultiBot.addMember(memberClass, memberLevel, memberName)
+					if memberOnline then tMember.setEnable() else tMember.setDisable() end
 					bindUnitToggleHandlers(tMember, { requireEnabledStateOnRight = true })
 				else
 					break
@@ -1702,11 +1770,12 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			local friendLoopMax = (tFriendCount > 0) and tFriendCount or 50
 
 			for i = 1, friendLoopMax do
-				local friendName, friendLevel, friendClass = GetFriendInfo(i)
+				local friendName, friendLevel, friendClass, _, friendOnline = GetFriendInfo(i)
 
 				-- Ensure that the Counter is not bigger than the Amount of Members in Friendlist
 				if(friendName ~= nil and friendLevel ~= nil and friendClass ~= nil and friendName ~= UnitName("player")) then
-					local tFriend = MultiBot.addFriend(friendClass, friendLevel, friendName).setDisable()
+					local tFriend = MultiBot.addFriend(friendClass, friendLevel, friendName)
+					if friendOnline then tFriend.setEnable() else tFriend.setDisable() end
 					bindUnitToggleHandlers(tFriend, { requireEnabledStateOnRight = true })
 				else
 					break
@@ -1738,8 +1807,12 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			return
 		end
 
-		if(MultiBot.isInside(arg1, "player already logged in")) then
-			local tName = string.sub(arg1, 6, string.find(arg1, " ", 6) - 1)
+		if(MultiBot.isInside(arg1, "player already logged in", "игрок уже в игре")) then
+			local _colonPos = string.find(arg1, ": ")
+			local _dashPos  = _colonPos and string.find(arg1, " - ", _colonPos) or nil
+			local tName = (_colonPos and _dashPos)
+				and string.sub(arg1, _colonPos + 2, _dashPos - 1)
+				or string.sub(arg1, 6, (string.find(arg1, " ", 6) or #arg1 + 1) - 1)
 			local tButton = MultiBot.frames["MultiBar"].frames["Units"].buttons[tName]
 			if(tButton == nil) then return end
 
@@ -1779,7 +1852,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			local tButton = MultiBot.frames["MultiBar"].frames["Units"].buttons[tName]
 			if(tButton == nil) then return end
 
-			if(MultiBot.isInside(arg1, "not your bot")) then
+			if(MultiBot.isInside(arg1, "not your bot", "не твой бот")) then
 				SendChatMessage("leave", "WHISPER", nil, tName)
 			end
 
@@ -1983,7 +2056,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			end
 		end
 
-		if(MultiBot.isInside(arg1, "Hello", "你好") and tButton == nil) then
+		if(MultiBot.isInside(arg1, "Прив", "Здравств", "Здарова", "услугам", "Готов") and tButton == nil) then
             local tUnit = MultiBot.toUnit(arg2)
             if not (tUnit and UnitExists(tUnit)) then
                -- Bot is still not in party/raid we stop
@@ -1997,7 +2070,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 				bindUnitToggleHandlers(tButton, { requireEnabledStateOnRight = false })
 			elseif(tButton == nil) then return end
 
-		if(MultiBot.isInside(arg1, "Hello", "你好") and tButton.class == "Unknown" and tButton.roster == "friends") then
+		if(MultiBot.isInside(arg1, "Прив", "Здравств", "Здарова", "услугам", "Готов") and tButton.class == "Unknown" and tButton.roster == "friends") then
 			local tName = ""
 			local tLevel = ""
 			local tClass = ""
@@ -2035,7 +2108,9 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			tButton.class = tClass
 		end
 
-		if(MultiBot.isInside(arg1, "Hello", "你好")) then
+		if(MultiBot.isInside(arg1, "Прив", "Здравств", "Здарова", "услугам", "Готов")) then
+			tButton.setEnable()
+
 			if(BridgeBootOwnsState() and MultiBot.Comm and MultiBot.Comm.RequestState) then
 				tButton.waitFor = "BRIDGE_STATE"
 				MultiBot.Comm.RequestState(arg2)
@@ -2054,7 +2129,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			return
 		end
 
-		if(MultiBot.isInside(arg1, "Goodbye", "再见")) then
+		if(MultiBot.isInside(arg1, "свидания", "Пока", "Увидимся", "встречи", "Прощай", "выхожу")) then
 			return
 		end
 
@@ -2166,7 +2241,7 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 
 		-- Inventory --
 
-		if(tButton.waitFor == "INVENTORY" and MultiBot.isInside(arg1, "Inventory", "背包")) then
+		if(tButton.waitFor == "INVENTORY" and MultiBot.isInside(arg1, "Inventory", "背包", "Инвентарь")) then
 			if(MultiBot.inventory and MultiBot.inventory.beginPayload) then
 				MultiBot.inventory:beginPayload(arg2)
 			else

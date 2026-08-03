@@ -77,7 +77,7 @@ This fork focuses on removing automatic bot chat spam from the main UI refresh p
 
 The addon now requests structured data from the server through `mod-multibot-bridge`.
 
-Examples of bridge requests:
+Examples of bridge request families (arguments omitted here for readability):
 
 ```text
 MBOT HELLO
@@ -110,6 +110,20 @@ RUN~POSITION
 RUN~LOOT
 RUN~FORMATION
 ```
+
+The Formation family uses the following complete party/raid-wide contracts:
+
+```text
+RUN~FORMATION~GROUP~~<token>~<formation>
+FORMATION_ACK~GROUP~~<token>~<success>~<failure>~<formation>
+
+GET~FORMATIONS~GROUP~~<token>
+FORMATIONS_BEGIN~<token>~<count>
+FORMATIONS_ITEM~<token>~<botName>~<formation>
+FORMATIONS_END~<token>~<sentCount>
+```
+
+`GROUP` covers every controllable bot in the player's current party or raid. It does not target individual raid subgroups.
 
 Manual playerbot commands are still intentionally preserved for diagnostics and gameplay actions.
 

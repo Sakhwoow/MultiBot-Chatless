@@ -442,6 +442,37 @@ function Comm.RunFormationCommand(scope, target, formation, callback)
     return false
   end
 
+  if MultiBot and type(MultiBot.TimerAfter) == "function" then
+    MultiBot.TimerAfter(5.0, function()
+      local bridge = ensureBridgeState()
+      local pending = bridge.formationCommands[token]
+      if not pending then
+        return
+      end
+
+      bridge.formationCommands[token] = nil
+      local result = {
+        status = "timeout",
+        scope = scope,
+        target = target,
+        token = token,
+        success = 0,
+        failure = 0,
+        formation = formation,
+      }
+
+      if type(pending.callback) == "function" then
+        pending.callback(result)
+      end
+
+      if MultiBot.OnFormationCommandApplied then
+        MultiBot.OnFormationCommandApplied(result)
+      end
+
+      systemMessage(L("formation.confirm.timeout"))
+    end)
+  end
+
   return token
 end
 
@@ -1087,6 +1118,7 @@ function Comm.MarkDisconnected(reason)
   state.outfitCommands = {}
   state.trainerActive = nil
   state.trainerCommands = {}
+  state.formationCommands = {}
   state.formationQueryActive = nil
 end
 
@@ -3340,10 +3372,10 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     end
 
     if success <= 0 then
-      systemMessage(L("formation.confirm.none", "Formation was not applied to any grouped bot."))
+      systemMessage(L("formation.confirm.none"))
     elseif failure > 0 then
       systemMessage(string.format(
-        L("formation.confirm.partial", "Formation applied to %d bot(s), failed for %d bot(s)."),
+        L("formation.confirm.partial"),
         success,
         failure
       ))

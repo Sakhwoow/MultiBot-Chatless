@@ -1028,6 +1028,26 @@ local zhCNValues = {
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "该法术已不可用。",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "机器人的可用金币不足。",
   ["tips.outfits.equip"] = "左键：装备\n右键：替换",
+  -- Chatless formation query
+  ["formation.query.title"] = "当前阵型",
+  ["formation.query.unavailable"] = "Bridge 不可用。",
+  ["formation.query.timeout"] = "阵型查询超时。",
+  ["formation.query.empty"] = "小队或团队中没有可控制的机器人。",
+  ["formation.query.mixed"] = "阵型状态：混合",
+  ["formation.query.common"] = "当前阵型：%s（%d 个机器人）",
+  ["formation.confirm.none"] = "阵型未应用到小队或团队中的任何机器人。",
+  ["formation.confirm.partial"] = "阵型已应用到 %d 个机器人，%d 个机器人应用失败。",
+  ["formation.confirm.timeout"] = "阵型命令超时。",
+  ["formation.name.arrow"] = "箭头",
+  ["formation.name.queue"] = "队列",
+  ["formation.name.near"] = "近距离",
+  ["formation.name.melee"] = "近战",
+  ["formation.name.line"] = "直线",
+  ["formation.name.circle"] = "圆形",
+  ["formation.name.chaos"] = "混乱",
+  ["formation.name.shield"] = "盾牌",
+  ["formation.name.far"] = "远距离",
+  ["formation.name.unknown"] = "未知",
 }
 
 register("zhCN", zhCNValues)

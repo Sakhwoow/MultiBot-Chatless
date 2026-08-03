@@ -1019,6 +1019,26 @@ local koKRValues = {
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "이 주문은 더 이상 사용할 수 없습니다.",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "봇의 사용 가능한 돈이 부족합니다.",
   ["tips.outfits.equip"] = "왼쪽 클릭: 장착\n오른쪽 클릭: 바꾸기",
+  -- Chatless formation query
+  ["formation.query.title"] = "현재 포메이션",
+  ["formation.query.unavailable"] = "브릿지를 사용할 수 없습니다.",
+  ["formation.query.timeout"] = "포메이션 조회 시간이 초과되었습니다.",
+  ["formation.query.empty"] = "파티 또는 공격대에서 제어 가능한 봇을 찾을 수 없습니다.",
+  ["formation.query.mixed"] = "포메이션 상태: 혼합",
+  ["formation.query.common"] = "현재 포메이션: %s (봇 %d명)",
+  ["formation.confirm.none"] = "파티 또는 공격대의 어떤 봇에도 포메이션을 적용하지 못했습니다.",
+  ["formation.confirm.partial"] = "봇 %d명에게 포메이션을 적용했고, %d명에게는 적용하지 못했습니다.",
+  ["formation.confirm.timeout"] = "포메이션 명령 시간이 초과되었습니다.",
+  ["formation.name.arrow"] = "화살표",
+  ["formation.name.queue"] = "대기열",
+  ["formation.name.near"] = "근거리",
+  ["formation.name.melee"] = "근접전",
+  ["formation.name.line"] = "선형",
+  ["formation.name.circle"] = "원형",
+  ["formation.name.chaos"] = "혼돈",
+  ["formation.name.shield"] = "방패",
+  ["formation.name.far"] = "원거리",
+  ["formation.name.unknown"] = "알 수 없음",
 }
 
 register("koKR", koKRValues)

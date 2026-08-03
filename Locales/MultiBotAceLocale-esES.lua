@@ -1028,6 +1028,26 @@ local esESValues = {
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "Este hechizo ya no está disponible.",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "El bot no tiene suficiente dinero disponible.",
   ["tips.outfits.equip"] = "Clic izquierdo: Equipar\nClic derecho: Reemplazar",
+  -- Chatless formation query
+  ["formation.query.title"] = "Formaciones actuales",
+  ["formation.query.unavailable"] = "Bridge no disponible.",
+  ["formation.query.timeout"] = "La consulta de formaciones agotó el tiempo de espera.",
+  ["formation.query.empty"] = "No se encontró ningún bot controlable en el grupo o la banda.",
+  ["formation.query.mixed"] = "Estado de las formaciones: mixto",
+  ["formation.query.common"] = "Formación actual: %s (%d bot(s))",
+  ["formation.confirm.none"] = "La formación no se aplicó a ningún bot del grupo o la banda.",
+  ["formation.confirm.partial"] = "Formación aplicada a %d bot(s); falló para %d bot(s).",
+  ["formation.confirm.timeout"] = "La orden de formación agotó el tiempo de espera.",
+  ["formation.name.arrow"] = "Flecha",
+  ["formation.name.queue"] = "Fila",
+  ["formation.name.near"] = "Cercana",
+  ["formation.name.melee"] = "Cuerpo a cuerpo",
+  ["formation.name.line"] = "Línea",
+  ["formation.name.circle"] = "Círculo",
+  ["formation.name.chaos"] = "Caos",
+  ["formation.name.shield"] = "Escudo",
+  ["formation.name.far"] = "Lejana",
+  ["formation.name.unknown"] = "Desconocida",
 }
 
 register("esES", esESValues)

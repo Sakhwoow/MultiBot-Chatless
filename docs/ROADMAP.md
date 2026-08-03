@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026.  
-Dernière mise à jour : 03/08/2026 par `patch-multibot-roadmap-formation-validation-v1-2026-08-03-184900`.  
+Dernière mise à jour : 03/08/2026 par `hotfix-multibot-formation-tooltip-roadmap-review-v1-2026-08-03-213000`.  
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -40,9 +40,13 @@ Réalisé par `patch-multibot-docs-cleanup-roadmap-v1-2026-08-01-162227` :
 
 Critère de sortie : phase validée par `verify.ps1`, avec hashes post-patch conformes et aucun ancien document actif.
 
-## Validation livrée — Formations chatless — VALIDÉE LE 03/08/2026
+## Validation livrée — Formations chatless — APPLICATION ET CONSULTATION VALIDÉES LE 03/08/2026
 
-Patch fonctionnel validé : `patch-multibot-formation-chatless-v1c-2026-08-01-181300`.
+Patches fonctionnels validés :
+
+- application : `patch-multibot-formation-chatless-v1c-2026-08-01-181300` ;
+- consultation : `patch-multibot-formation-query-chatless-v1-2026-08-03-195340` ;
+- localisation : `patch-multibot-formation-query-i18n-v1b-2026-08-03-210300`.
 
 Périmètre validé :
 
@@ -51,7 +55,11 @@ Périmètre validé :
 - le fonctionnement est validé avec la stratégie `passive`, en groupe et pour l'ensemble des bots contrôlables d'un raid ;
 - aucun fichier de `mod-playerbots` n'a été modifié ;
 - l'icône de l'addon n'est mise à jour qu'après un `FORMATION_ACK` complet ;
-- aucun message `formation ...` n'est envoyé dans PARTY ou RAID pour ces clics.
+- aucun message `formation ...` n'est envoyé dans PARTY ou RAID pour ces clics ;
+- le clic droit utilise `MultiBot.Comm.RequestFormations()` puis `GET~FORMATIONS~GROUP` ;
+- le bridge lit la valeur effective de chaque bot avec `FormationValue::Save()` et renvoie `FORMATIONS_BEGIN/ITEM/END` ;
+- le résultat est affiché localement, une ligne par bot, dans un tooltip traduit pour les huit locales supportées ;
+- aucun message PARTY, RAID, WHISPER ou `TellMaster` n'est produit par la consultation.
 
 Preuves de validation :
 
@@ -61,14 +69,15 @@ Preuves de validation :
 - 11 requêtes `RUN~FORMATION`, 11 réponses `FORMATION_ACK`, 55 applications réussies et 0 échec ;
 - les huit formations ont provoqué visuellement le déplacement attendu des bots ;
 - l'icône a été mise à jour visuellement sans message chat visible ;
-- aucune erreur Lua MultiBot ni ancien blocage `PassiveMultiplier` observé.
+- aucune erreur Lua MultiBot ni ancien blocage `PassiveMultiplier` observé ;
+- audit de consultation : `audit-multibot-runtime-tests-v1c-2026-08-03-203219.zip` ;
+- SHA-256 de cet audit : `44627A920618C747BD9EEB0384D118FFFA13157828677172E46A642436677CB5` ;
+- 9 requêtes `GET~FORMATIONS`, 9 séquences `FORMATIONS_BEGIN/END` et 23 réponses individuelles `FORMATIONS_ITEM` ;
+- tooltip local et traductions validés visuellement par l'utilisateur, sans sortie chat.
 
 Reste explicitement hors périmètre :
 
-- le clic droit de consultation de la formation actuelle utilise encore `MultiBot.ActionToGroup("formation")` et l'ancien chemin PARTY/RAID ;
 - la formation Playerbots `far` existe dans le module de référence mais n'est pas exposée par l'interface actuelle.
-
-Prochaine reprise recommandée : auditer puis migrer la consultation de formation par clic droit vers une lecture bridge structurée, dans un patch séparé.
 
 ## Phase 1 — Baseline de compilation et tests de non-régression
 
@@ -158,7 +167,7 @@ Avant chaque migration, classer l'occurrence `SendChatMessage` comme :
 Ordre recommandé :
 
 1. **Formations — application par clic gauche : VALIDÉE** via `RUN~FORMATION~GROUP` par `patch-multibot-formation-chatless-v1c-2026-08-01-181300`.
-2. Consultation de la formation actuelle par clic droit — encore fondée sur PARTY/RAID ; prochaine migration recommandée via une lecture bridge structurée.
+2. **Consultation de la formation actuelle par clic droit : VALIDÉE** via `GET~FORMATIONS~GROUP`, `FORMATIONS_BEGIN/ITEM/END` et un tooltip local traduit.
 3. `s *` — vente générale bridge-first.
 4. `s vendor` — vente vendeur bridge-first, sans whisper item par item.
 5. `open items` — ouverture de conteneurs bridge-first.

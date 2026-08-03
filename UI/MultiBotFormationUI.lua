@@ -50,15 +50,22 @@ local function formationLabel(value)
     return label
 end
 
-local function hideFormationTooltip(token)
+local function hideFormationTooltip(token, owner)
     if token ~= latestFormationTooltipToken then
         return
     end
 
     latestFormationTooltipToken = nil
-    if GameTooltip then
-        GameTooltip:Hide()
+
+    if not GameTooltip or not GameTooltip.GetOwner or not GameTooltip.Hide then
+        return
     end
+
+    if GameTooltip:GetOwner() ~= owner then
+        return
+    end
+
+    GameTooltip:Hide()
 end
 
 local function showFormationTooltip(button, result)
@@ -129,7 +136,7 @@ local function showFormationTooltip(button, result)
 
     if MultiBot and type(MultiBot.TimerAfter) == "function" then
         MultiBot.TimerAfter(8.0, function()
-            hideFormationTooltip(token)
+            hideFormationTooltip(token, button)
         end)
     end
 end

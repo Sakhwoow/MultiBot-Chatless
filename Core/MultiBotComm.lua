@@ -152,6 +152,10 @@ local function ensureBridgeState()
   state.combatSeq = state.combatSeq or 0
   state.positionSeq = state.positionSeq or 0
   state.lootSeq = state.lootSeq or 0
+  state.formationSeq = state.formationSeq or 0
+  state.formationCommands = state.formationCommands or {}
+  state.formationQuerySeq = state.formationQuerySeq or 0
+  state.formationQueryActive = state.formationQueryActive or nil
   return state
 end
 
@@ -397,6 +401,197 @@ function Comm.RunPositionCommand(scope, target, command)
   local token = tostring(math.floor(safeNow() * 1000)) .. "-position-" .. tostring(state.positionSeq)
 
   return Comm.Send("RUN", "POSITION~" .. scope .. "~" .. urlEncodeField(target) .. "~" .. token .. "~" .. urlEncodeField(command))
+end
+
+function Comm.RunFormationCommand(scope, target, formation, callback)
+  local state = ensureBridgeState()
+
+  if not state.connected then
+    return false
+  end
+
+  scope = string.upper(trim(scope or "GROUP"))
+  target = trim(target or "")
+  formation = string.lower(trim(formation or ""))
+
+  local allowed = {
+    arrow = true,
+    queue = true,
+    near = true,
+    melee = true,
+    line = true,
+    circle = true,
+    chaos = true,
+    shield = true,
+  }
+
+  if scope ~= "GROUP" or target ~= "" or not allowed[formation] then
+    return false
+  end
+
+  state.formationSeq = (tonumber(state.formationSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-formation-" .. tostring(state.formationSeq)
+  state.formationCommands[token] = {
+    formation = formation,
+    callback = type(callback) == "function" and callback or nil,
+    startedAt = safeNow(),
+  }
+
+  if not Comm.Send("RUN", "FORMATION~" .. scope .. "~~" .. token .. "~" .. urlEncodeField(formation)) then
+    state.formationCommands[token] = nil
+    return false
+  end
+
+  return token
+end
+
+function Comm.RequestFormations(callback)
+  local state = ensureBridgeState()
+
+  if not state.connected then
+    return false
+  end
+
+  state.formationQuerySeq = (tonumber(state.formationQuerySeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-formations-" .. tostring(state.formationQuerySeq)
+
+  state.formationQueryActive = {
+    token = token,
+    callback = type(callback) == "function" and callback or nil,
+    startedAt = safeNow(),
+    expected = 0,
+    items = {},
+    begun = false,
+  }
+
+  if not Comm.Send("GET", "FORMATIONS~GROUP~~" .. token) then
+    state.formationQueryActive = nil
+    return false
+  end
+
+  if MultiBot and type(MultiBot.TimerAfter) == "function" then
+    MultiBot.TimerAfter(5.0, function()
+      local bridge = ensureBridgeState()
+      local active = bridge.formationQueryActive
+      if not active or active.token ~= token then
+        return
+      end
+
+      bridge.formationQueryActive = nil
+      local result = {
+        token = token,
+        status = "timeout",
+        expected = tonumber(active.expected or 0) or 0,
+        sent = #(active.items or {}),
+        items = active.items or {},
+      }
+
+      if type(active.callback) == "function" then
+        active.callback(result)
+      end
+
+      if MultiBot.OnFormationQueryCompleted then
+        MultiBot.OnFormationQueryCompleted(result)
+      end
+    end)
+  end
+
+  return token
+end
+
+local function getActiveFormationQuery(token)
+  local active = ensureBridgeState().formationQueryActive
+  token = trim(token)
+
+  if type(active) ~= "table" or token == "" or active.token ~= token then
+    return nil
+  end
+
+  return active
+end
+
+function Comm.ApplyFormationsBeginPayload(payload)
+  local token, countText = splitOnce(payload or "", "~")
+  token = trim(token)
+
+  local active = getActiveFormationQuery(token)
+  if not active then
+    return false
+  end
+
+  active.expected = tonumber(countText or "0") or 0
+  active.items = {}
+  active.begun = true
+
+  debugPrint("ADDON:RX", "FORMATIONS_BEGIN", token, active.expected)
+  return true
+end
+
+function Comm.ApplyFormationsItemPayload(payload)
+  local token, rest = splitOnce(payload or "", "~")
+  local encodedBotName, encodedFormation = splitOnce(rest or "", "~")
+  token = trim(token)
+
+  local active = getActiveFormationQuery(token)
+  if not active or not active.begun then
+    return false
+  end
+
+  local botName = trim(urlDecodeField(encodedBotName))
+  local formation = string.lower(trim(urlDecodeField(encodedFormation)))
+
+  if botName == "" then
+    return false
+  end
+
+  if formation == "" then
+    formation = "?"
+  end
+
+  active.items[#active.items + 1] = {
+    botName = botName,
+    formation = formation,
+  }
+
+  debugPrint("ADDON:RX", "FORMATIONS_ITEM", token, botName, formation)
+  return true
+end
+
+function Comm.ApplyFormationsEndPayload(payload)
+  local token, sentText = splitOnce(payload or "", "~")
+  token = trim(token)
+
+  local state = ensureBridgeState()
+  local active = getActiveFormationQuery(token)
+  if not active or not active.begun then
+    return false
+  end
+
+  table.sort(active.items, function(left, right)
+    return string.lower(left.botName or "") < string.lower(right.botName or "")
+  end)
+
+  state.formationQueryActive = nil
+
+  local result = {
+    token = token,
+    status = "ok",
+    expected = tonumber(active.expected or 0) or 0,
+    sent = tonumber(sentText or "0") or 0,
+    items = active.items or {},
+  }
+
+  debugPrint("ADDON:RX", "FORMATIONS_END", token, result.sent)
+
+  if type(active.callback) == "function" then
+    active.callback(result)
+  end
+
+  if MultiBot.OnFormationQueryCompleted then
+    MultiBot.OnFormationQueryCompleted(result)
+  end
+
+  return true
 end
 
 function Comm.RequestOutfits(name)
@@ -892,6 +1087,7 @@ function Comm.MarkDisconnected(reason)
   state.outfitCommands = {}
   state.trainerActive = nil
   state.trainerCommands = {}
+  state.formationQueryActive = nil
 end
 
 local function parseBridgeDetailPayload(payload)
@@ -3087,6 +3283,75 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     return Comm.ApplyProfessionRecipeCraftPayload(payload)
   end
 
+  if opcode == "FORMATIONS_BEGIN" then
+    state.connected = true
+    state.lastError = nil
+    return Comm.ApplyFormationsBeginPayload(payload)
+  end
+
+  if opcode == "FORMATIONS_ITEM" then
+    state.connected = true
+    state.lastError = nil
+    return Comm.ApplyFormationsItemPayload(payload)
+  end
+
+  if opcode == "FORMATIONS_END" then
+    state.connected = true
+    state.lastError = nil
+    return Comm.ApplyFormationsEndPayload(payload)
+  end
+
+  if opcode == "FORMATION_ACK" then
+    local scope, rest = splitOnce(payload or "", "~")
+    local target, rest2 = splitOnce(rest or "", "~")
+    local token, rest3 = splitOnce(rest2 or "", "~")
+    local successText, rest4 = splitOnce(rest3 or "", "~")
+    local failureText, encodedFormation = splitOnce(rest4 or "", "~")
+
+    scope = string.upper(trim(scope))
+    target = trim(urlDecodeField(target))
+    token = trim(token)
+    local success = tonumber(successText or "0") or 0
+    local failure = tonumber(failureText or "0") or 0
+    local formation = string.lower(trim(urlDecodeField(encodedFormation)))
+
+    state.connected = true
+    state.lastError = nil
+    debugPrint("ADDON:RX", "FORMATION_ACK", payload or "")
+
+    local pending = state.formationCommands[token]
+    state.formationCommands[token] = nil
+
+    local result = {
+      scope = scope,
+      target = target,
+      token = token,
+      success = success,
+      failure = failure,
+      formation = formation,
+    }
+
+    if pending and type(pending.callback) == "function" then
+      pending.callback(result)
+    end
+
+    if MultiBot.OnFormationCommandApplied then
+      MultiBot.OnFormationCommandApplied(result)
+    end
+
+    if success <= 0 then
+      systemMessage(L("formation.confirm.none", "Formation was not applied to any grouped bot."))
+    elseif failure > 0 then
+      systemMessage(string.format(
+        L("formation.confirm.partial", "Formation applied to %d bot(s), failed for %d bot(s)."),
+        success,
+        failure
+      ))
+    end
+
+    return true
+  end
+
   if opcode == "RTI_ACK" then
     state.connected = true
     state.lastError = nil
@@ -3208,6 +3473,8 @@ function Comm.OnPlayerEnteringWorld()
   state.questActive = {}
   state.gameObjects = {}
   state.gameObjectActive = {}
+  state.formationCommands = {}
+  state.formationQueryActive = nil
   state.talentSpecs = {}
   state.talentSpecActive = nil
   state.inventoryActive = nil

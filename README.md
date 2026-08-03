@@ -100,6 +100,7 @@ GET~GLYPHS
 GET~OUTFITS
 GET~QUESTS
 GET~GAMEOBJECTS
+GET~FORMATIONS
 RUN~CRAFT_RECIPE
 RUN~ITEM_ACTION
 RUN~OUTFIT
@@ -107,6 +108,7 @@ RUN~RTI
 RUN~COMBAT
 RUN~POSITION
 RUN~LOOT
+RUN~FORMATION
 ```
 
 Manual playerbot commands are still intentionally preserved for diagnostics and gameplay actions.
@@ -202,6 +204,10 @@ The goal is to remove automatic UI-refresh spam.
     <td><strong>Improved</strong> bridge-visible grouped randombots alongside AddClass bots and altbots</td>
   </tr>
   <tr>
+    <td>Party / raid formation controls</td>
+    <td><strong>Bridge-first and chatless</strong> — left-click applies one formation to every controllable bot in the current party or raid through <code>RUN~FORMATION</code>; right-click reads each bot's effective formation through <code>GET~FORMATIONS</code> and displays a localized tooltip</td>
+  </tr>
+  <tr>
     <td>Legacy automatic chat fallback</td>
     <td><strong>Disabled by default</strong></td>
   </tr>
@@ -267,6 +273,7 @@ The goal is to remove automatic UI-refresh spam.
   - German client
   - French client
   - Spanish client
+- Localization files included for <code>enUS</code>, <code>enGB</code>, <code>frFR</code>, <code>esES</code>, <code>deDE</code>, <code>ruRU</code>, <code>zhCN</code> and <code>koKR</code>.
 
 ## Server
 
@@ -482,6 +489,8 @@ Implemented bridge-first / chatless areas:
 - Pull Control frame through the bridge.
 - Combat strategy fine tuning through the bridge.
 - Disperse controls through the bridge with `disperse set <yards>` and `disperse disable`.
+- Party/raid-wide formation application through `RUN~FORMATION`, with per-bot effective formation inspection through `GET~FORMATIONS` and no PARTY/RAID chat output.
+- Localized formation status tooltip for all eight addon locale files.
 - Loot rules through the bridge with `nc +loot`, `nc -loot` and `ll all|normal|gray|quest|skill`.
 - Loot Master UI for master-loot distribution with item tooltips, candidate scoring, profession/spec hints, saved preferences and recent loot history.
 - Bridge-visible bot discovery for AddClass bots, altbots and grouped randombots.
@@ -564,6 +573,24 @@ MultiBot.allowLegacyChatFallback = false
 </details>
 
 <details>
+<summary><strong>The formation tooltip does not appear or is incomplete</strong></summary>
+
+Check that the bridge is connected and that the bots are controllable members of the same party or raid as the player.
+
+A right-click on the Formation button should produce structured bridge traffic similar to:
+
+```text
+GET~FORMATIONS~GROUP~~<token>
+FORMATIONS_BEGIN~<token>~<count>
+FORMATIONS_ITEM~<token>~<botName>~<formation>
+FORMATIONS_END~<token>~<sentCount>
+```
+
+The query is raid-wide: it includes all controllable bots in the current party or raid and does not target individual raid subgroups.
+
+</details>
+
+<details>
 <summary><strong>Inventory, spellbook, glyphs or outfits do not update</strong></summary>
 
 Check the server console for bridge requests such as:
@@ -617,6 +644,15 @@ The frame uses the client master-loot candidate API and enriches candidates with
 
 ---
 
+# Project Documentation
+
+The active project documentation is intentionally limited to two files:
+
+- [Development roadmap](docs/ROADMAP.md) — current phases, priorities, risks and acceptance criteria.
+- [Debug and observability runbook](docs/DEBUG_RUNBOOK.md) — in-game debug commands, performance counters and bug-report procedure.
+
+---
+
 # Repository Layout
 
 ```text
@@ -631,6 +667,8 @@ MultiBot-Chatless/
 ├── Textures/
 ├── UI/
 ├── docs/
+│   ├── DEBUG_RUNBOOK.md
+│   └── ROADMAP.md
 └── MultiBot.toc
 ```
 

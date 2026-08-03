@@ -1027,6 +1027,23 @@ local frFRValues = {
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "Ce sort n'est plus disponible.",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "Le bot n'a pas assez d'argent disponible.",
   ["tips.outfits.equip"] = "Clic gauche : Équiper\nClic droit : Remplacer",
+  -- Chatless formation query
+  ["formation.query.title"] = "Formations actuelles",
+  ["formation.query.unavailable"] = "Bridge indisponible.",
+  ["formation.query.timeout"] = "La consultation des formations a expiré.",
+  ["formation.query.empty"] = "Aucun bot contrôlable trouvé dans le groupe ou le raid.",
+  ["formation.query.mixed"] = "État des formations : mixte",
+  ["formation.query.common"] = "Formation actuelle : %s (%d bot(s))",
+  ["formation.name.arrow"] = "Flèche",
+  ["formation.name.queue"] = "File",
+  ["formation.name.near"] = "Rapprochée",
+  ["formation.name.melee"] = "Mêlée",
+  ["formation.name.line"] = "Ligne",
+  ["formation.name.circle"] = "Cercle",
+  ["formation.name.chaos"] = "Chaos",
+  ["formation.name.shield"] = "Bouclier",
+  ["formation.name.far"] = "Éloignée",
+  ["formation.name.unknown"] = "Inconnue",
 }
 
 register("frFR", frFRValues)

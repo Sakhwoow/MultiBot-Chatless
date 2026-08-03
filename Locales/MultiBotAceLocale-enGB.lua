@@ -1030,6 +1030,23 @@ local enGBValues = {
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "This spell is no longer available.",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "The bot does not have enough available money.",
   ["tips.outfits.equip"] = "Left click: Equip\nRight click: Replace",
+  -- Chatless formation query
+  ["formation.query.title"] = "Current formations",
+  ["formation.query.unavailable"] = "Bridge unavailable.",
+  ["formation.query.timeout"] = "Formation query timed out.",
+  ["formation.query.empty"] = "No controllable bot found in the group or raid.",
+  ["formation.query.mixed"] = "Formation state: mixed",
+  ["formation.query.common"] = "Current formation: %s (%d bot(s))",
+  ["formation.name.arrow"] = "Arrow",
+  ["formation.name.queue"] = "Queue",
+  ["formation.name.near"] = "Near",
+  ["formation.name.melee"] = "Melee",
+  ["formation.name.line"] = "Line",
+  ["formation.name.circle"] = "Circle",
+  ["formation.name.chaos"] = "Chaos",
+  ["formation.name.shield"] = "Shield",
+  ["formation.name.far"] = "Far",
+  ["formation.name.unknown"] = "Unknown",
 }
 
 register("enGB", enGBValues)

@@ -1027,6 +1027,23 @@ local deDEValues = {
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "Dieser Zauber ist nicht mehr verfügbar.",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "Der Bot hat nicht genug verfügbares Geld.",
   ["tips.outfits.equip"] = "Linksklick: Ausrüsten\nRechtsklick: Ersetzen",
+  -- Chatless formation query
+  ["formation.query.title"] = "Aktuelle Formationen",
+  ["formation.query.unavailable"] = "Bridge nicht verfügbar.",
+  ["formation.query.timeout"] = "Zeitüberschreitung bei der Formationsabfrage.",
+  ["formation.query.empty"] = "Kein steuerbarer Bot in der Gruppe oder im Schlachtzug gefunden.",
+  ["formation.query.mixed"] = "Formationsstatus: gemischt",
+  ["formation.query.common"] = "Aktuelle Formation: %s (%d Bot(s))",
+  ["formation.name.arrow"] = "Pfeil",
+  ["formation.name.queue"] = "Kolonne",
+  ["formation.name.near"] = "Nah",
+  ["formation.name.melee"] = "Nahkampf",
+  ["formation.name.line"] = "Linie",
+  ["formation.name.circle"] = "Kreis",
+  ["formation.name.chaos"] = "Chaos",
+  ["formation.name.shield"] = "Schild",
+  ["formation.name.far"] = "Entfernt",
+  ["formation.name.unknown"] = "Unbekannt",
 }
 
 register("deDE", deDEValues)

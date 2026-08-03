@@ -1028,6 +1028,23 @@ local ruRUValues = {
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "Это заклинание больше недоступно.",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "У бота недостаточно доступных денег.",
   ["tips.outfits.equip"] = "ЛКМ: Надеть\nПКМ: Заменить",
+  -- Chatless formation query
+  ["formation.query.title"] = "Текущие построения",
+  ["formation.query.unavailable"] = "Bridge недоступен.",
+  ["formation.query.timeout"] = "Время ожидания запроса построений истекло.",
+  ["formation.query.empty"] = "В группе или рейде нет доступных для управления ботов.",
+  ["formation.query.mixed"] = "Состояние построений: смешанное",
+  ["formation.query.common"] = "Текущее построение: %s (%d бот(ов))",
+  ["formation.name.arrow"] = "Клин",
+  ["formation.name.queue"] = "Колонна",
+  ["formation.name.near"] = "Рядом",
+  ["formation.name.melee"] = "Ближний бой",
+  ["formation.name.line"] = "Шеренга",
+  ["formation.name.circle"] = "Круг",
+  ["formation.name.chaos"] = "Хаос",
+  ["formation.name.shield"] = "Щит",
+  ["formation.name.far"] = "Дальнее",
+  ["formation.name.unknown"] = "Неизвестно",
 }
 
 register("ruRU", ruRUValues)

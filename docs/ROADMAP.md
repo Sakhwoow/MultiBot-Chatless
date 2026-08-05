@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026.  
-Dernière mise à jour : 03/08/2026 par `hotfix-multibot-formation-tooltip-roadmap-review-v1-2026-08-03-213000`.  
+Dernière mise à jour : 04/08/2026 par `patch-multibot-roadmap-jellypowered-integration-v1-2026-08-04-113000`.  
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -24,6 +24,57 @@ Audit → Analyse → Proposition → Validation utilisateur → Patch minimal �
 - Un patch = un objectif.
 - Rollback et hashes obligatoires.
 - Ne jamais ajouter d'exécuteur bridge générique acceptant une commande Playerbots arbitraire.
+
+## Contribution externe Jellypowered — AUDIT AUTORISÉ, INTÉGRATION NON COMMENCÉE
+
+Source reçue le 04/08/2026 :
+
+- auteur : Jellypowered `<Jellypowered@gmail.com>` ;
+- commit 1 : `13059a9f334d1e5aaa8560ab29a1814e48b07054` ;
+- commit 2 : `7ff1347535be6d5a3256d933731c11c4b3f3b38e` ;
+- commit 3 : `04061f084bd189487f1ac0e99892316146f1bea0` ;
+- la PR est conservée comme source de recherche et ne doit pas être fusionnée directement dans `main`.
+
+Décision validée :
+
+- auditer la contribution dans un environnement isolé ;
+- conserver les parties techniquement sûres et utiles ;
+- adapter ou réécrire les parties incompatibles avec notre bridge actuel ;
+- intégrer progressivement par patches à objectif unique ;
+- ne jamais modifier `mod-playerbots` ;
+- ne marquer aucune fonction comme intégrée avant vérification, compilation, tests en jeu et validation explicite de l'utilisateur.
+
+Fonctions candidates, toutes encore au statut `À AUDITER` :
+
+1. helpers de parsing numérique strict et réponses structurées ;
+2. inventaire détaillé `INV_BAG`, `INV_ITEM_LOC`, `INV_EQUIP_LOC` ;
+3. lectures bulk inventaire et compétences ;
+4. équipement d'objet ;
+5. abandon et partage de quête ;
+6. lancement de sorts ;
+7. application de talents ;
+8. échange d'objets ;
+9. artisanat ciblé ;
+10. modifications des transferts banque, banque de guilde et vendeur.
+
+Crédits obligatoires :
+
+- les audits et rapports conservent les trois hashes de commits, le nom et l'adresse de l'auteur ;
+- chaque PR intermédiaire indique précisément le code repris, adapté, réécrit ou rejeté ;
+- une reprise substantielle de code utilise, lorsque pertinent :
+  `Co-authored-by: Jellypowered <Jellypowered@gmail.com>` ;
+- une réécriture seulement inspirée mentionne :
+  `Design inspired by the Jellypowered bridge contribution.` ;
+- les crédits sont préparés pour la PR uniquement après validation des tests en jeu de la partie concernée ;
+- aucune attribution ne doit suggérer qu'une fonction non testée ou non intégrée est déjà livrée.
+
+Politique de tests :
+
+- les tests ciblés restent obligatoires après chaque patch ;
+- les tests exhaustifs transversaux de toutes les fonctions pourront être exécutés vers la fin du projet ;
+- ce report des tests exhaustifs ne permet pas de déclarer une fonction validée avant ses propres tests ciblés.
+
+Prochaine étape : exécuter et analyser l'audit local `audit-multibot-jellypowered-pr-v1`, puis proposer l'ordre d'intégration réel à partir des API et conflits constatés.
 
 ## Phase 0 — Assainissement documentaire — TERMINÉE
 

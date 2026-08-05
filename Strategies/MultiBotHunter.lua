@@ -68,7 +68,7 @@ MultiBot.addHunter = function(pFrame, pCombat, pNormal)
 	combatAspectFrame.addButton("CombatSpeed", 0, 26, "ability_mount_whitetiger", MultiBot.L("tips.hunter.caspect.bspeed"))
     .doLeft = function(pButton)
         MultiBot.SelectToTarget(pButton.get(), "CombatAspect", pButton.texture, "co +bspeed,?", pButton.getName())
-		pButton.getButton("NonCombatAspect").doRight = function(btn)
+		pButton.getButton("CombatAspect").doRight = function(btn)
 			MultiBot.OnOffActionToTarget(btn, "co +bspeed,?", "co -bspeed,?", btn.getName())
 		end
 	end

@@ -875,9 +875,10 @@ local function _mbGetBridgeStateTimestamp(target)
 	return entry and tonumber(entry.lastUpdateAt) or 0
 end
 
-local function _mbScheduleStrategyStateRefresh(target)
+local function _mbScheduleStrategyStateRefresh(target, scope)
 	if(type(target) ~= "string" or target == "") then return end
 	if(not (MultiBot.Comm and MultiBot.Comm.RequestState)) then return end
+	scope = (scope == "nc") and "nc" or "co"
 
 	MultiBot._strategySyncSequence = MultiBot._strategySyncSequence or {}
 	local sequence = (MultiBot._strategySyncSequence[target] or 0) + 1
@@ -900,8 +901,8 @@ local function _mbScheduleStrategyStateRefresh(target)
 
 		local unitButton = _mbGetStrategyUnitButton(target)
 		if(not unitButton) then return end
-		unitButton.waitFor = "CO"
-		SendChatMessage("co ?", "WHISPER", nil, target)
+		unitButton.waitFor = string.upper(scope)
+		SendChatMessage(scope .. " ?", "WHISPER", nil, target)
 	end
 
 	if(type(MultiBot.TimerAfter) == "function") then
@@ -924,7 +925,7 @@ MultiBot.OnOffActionToTarget = function(pButton, pOn, pOff, pTarget)
 
 	if(bridgeSync) then
 		if(MultiBot.ActionToTarget(_mbStripStrategyQuerySuffix(action), pTarget)) then
-			_mbScheduleStrategyStateRefresh(pTarget)
+			_mbScheduleStrategyStateRefresh(pTarget, scope)
 		end
 		-- L'état visuel est reconstruit depuis l'état réel du bot.
 		return false

@@ -134,17 +134,17 @@ MultiBot.addPriest = function(pFrame, pCombat, pNormal)
 
 	-- STRATEGIES --
 
-	if(MultiBot.isInside(pCombat, "heal")) then pFrame.getButton("Heal").setEnable() end
-	if(MultiBot.isInside(pNormal, "buff,")) then pFrame.getButton("Buff").setEnable() end
-	if(MultiBot.isInside(pCombat, "shadow debuff")) then pFrame.getButton("ShadowDebuff").setEnable() end
-	if(MultiBot.isInside(pCombat, "shadow aoe")) then pFrame.getButton("ShadowAoe").setEnable() end
-	if(MultiBot.isInside(pCombat, "holy heal")) then pFrame.getButton("HolyHeal").setEnable() end
-	if(MultiBot.isInside(pCombat, "holy dps")) then pFrame.getButton("HolyDps").setEnable() end
-	if(MultiBot.isInside(pCombat, "shadow,")) then pFrame.getButton("Shadow").setEnable() end
-	if(MultiBot.isInside(pCombat, "healer dps")) then pFrame.getButton("DpsAssist").setEnable() end
-	if(MultiBot.isInside(pCombat, "shadow debuff")) then pFrame.getButton("DpsDebuff").setEnable() end
-	if(MultiBot.isInside(pCombat, "dps aoe")) then pFrame.getButton("DpsAoe").setEnable() end
-	if(MultiBot.isInside(pCombat, "shadow,")) then pFrame.getButton("Shadow").setEnable() end
-	if(MultiBot.isInside(pCombat, "tank assist")) then pFrame.getButton("TankAssist").setEnable() end
-	if(MultiBot.isInside(pNormal, "rshadow")) then pFrame.getButton("ShadowRes").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "heal")) then pFrame.getButton("Heal").setEnable() end
+	if(MultiBot.hasStrategy(pNormal, "buff")) then pFrame.getButton("Buff").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "shadow debuff")) then pFrame.getButton("ShadowDebuff").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "shadow aoe")) then pFrame.getButton("ShadowAoe").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "holy heal")) then pFrame.getButton("HolyHeal").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "holy dps")) then pFrame.getButton("HolyDps").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "shadow")) then pFrame.getButton("Shadow").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "healer dps")) then pFrame.getButton("DpsAssist").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "shadow debuff")) then pFrame.getButton("DpsDebuff").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "dps aoe")) then pFrame.getButton("DpsAoe").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "shadow")) then pFrame.getButton("Shadow").setEnable() end
+	if(MultiBot.hasStrategy(pCombat, "tank assist")) then pFrame.getButton("TankAssist").setEnable() end
+	if(MultiBot.hasStrategy(pNormal, "rshadow")) then pFrame.getButton("ShadowRes").setEnable() end
 end

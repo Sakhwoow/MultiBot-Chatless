@@ -35,15 +35,15 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 
 	-- STRATEGIES:BUFF --
 
-	if(MultiBot.isInside(pNormal, "bhealth")) then
+	if(MultiBot.hasStrategy(pNormal, "bhealth")) then
 		tButton.setTexture("spell_shadow_lifedrain02").setEnable().doRight = function(pButton)
 			MultiBot.OnOffActionToTarget(pButton, "nc +bhealth,?", "nc -bhealth,?", pButton.getName())
 		end
-	elseif(MultiBot.isInside(pNormal, "bmana")) then
+	elseif(MultiBot.hasStrategy(pNormal, "bmana")) then
 		tButton.setTexture("spell_shadow_siphonmana").setEnable().doRight = function(pButton)
 			MultiBot.OnOffActionToTarget(pButton, "nc +bmana,?", "nc -bmana,?", pButton.getName())
 		end
-	elseif(MultiBot.isInside(pNormal, "bdps")) then
+	elseif(MultiBot.hasStrategy(pNormal, "bdps")) then
 		tButton.setTexture("spell_shadow_haunting").setEnable().doRight = function(pButton)
 			MultiBot.OnOffActionToTarget(pButton, "nc +bdps,?", "nc -bdps,?", pButton.getName())
 		end
@@ -181,7 +181,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 	end
 
 	for _,v in ipairs(stoneList) do
-		if MultiBot.isInside(pNormal, v[2]) then fStones.activeStone = v[1]; break end
+		if MultiBot.hasStrategy(pNormal, v[2]) then fStones.activeStone = v[1]; break end
 	end
 	UpdateStoneIcons(fStones.activeStone)
 	fStones:SetScript("OnShow", function(self) UpdateStoneIcons(self.activeStone) end)
@@ -261,7 +261,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 	end
 
 	for _,v in ipairs(ssList) do
-		if MultiBot.isInside(pNormal, v[2]) then fSoul.activeSS = v[1]; break end
+		if MultiBot.hasStrategy(pNormal, v[2]) then fSoul.activeSS = v[1]; break end
 	end
 	UpdateSSIcons(fSoul.activeSS)
 	fSoul:SetScript("OnShow", function(self) UpdateSSIcons(self.activeSS) end)
@@ -348,7 +348,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
     end
 
     for _, v in ipairs(petList) do
-      if MultiBot.isInside(pNormal, v[2]) then fPets.activePet = v[1]; break end
+      if MultiBot.hasStrategy(pNormal, v[2]) then fPets.activePet = v[1]; break end
     end
     UpdatePetIcons(fPets.activePet)
 
@@ -519,7 +519,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
    end
 
    for _,v in ipairs(curseList) do
-     if MultiBot.isInside(pCombat, v[2]) then fCurses.activeCurse = v[1]; break end
+     if MultiBot.hasStrategy(pCombat, v[2]) then fCurses.activeCurse = v[1]; break end
    end
    UpdateCurseIcons(fCurses.activeCurse)
 
@@ -530,13 +530,13 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 
 
 	-- STRATEGIES --
-    if(MultiBot.isInside(pCombat, "dps")) then pFrame.getButton("Dps").setEnable() end
-    if(MultiBot.isInside(pCombat, "dps aoe")) then pFrame.getButton("DpsAoe").setEnable() end
-    if(MultiBot.isInside(pCombat, "dps debuff")) then pFrame.getButton("DpsDebuff").setEnable() end
-    if(MultiBot.isInside(pCombat, "dps assist")) then pFrame.getButton("DpsAssist").setEnable() end
-    if(MultiBot.isInside(pCombat, "tank assist")) then pFrame.getButton("TankAssist").setEnable() end
-    if(MultiBot.isInside(pCombat, "tank")) then pFrame.getButton("Tank").setEnable() end
-    if(MultiBot.isInside(pCombat, "meta melee")) then pFrame.getButton("MetaMelee").setEnable() end
+    if(MultiBot.hasStrategy(pCombat, "dps")) then pFrame.getButton("Dps").setEnable() end
+    if(MultiBot.hasStrategy(pCombat, "dps aoe")) then pFrame.getButton("DpsAoe").setEnable() end
+    if(MultiBot.hasStrategy(pCombat, "dps debuff")) then pFrame.getButton("DpsDebuff").setEnable() end
+    if(MultiBot.hasStrategy(pCombat, "dps assist")) then pFrame.getButton("DpsAssist").setEnable() end
+    if(MultiBot.hasStrategy(pCombat, "tank assist")) then pFrame.getButton("TankAssist").setEnable() end
+    if(MultiBot.hasStrategy(pCombat, "tank")) then pFrame.getButton("Tank").setEnable() end
+    if(MultiBot.hasStrategy(pCombat, "meta melee")) then pFrame.getButton("MetaMelee").setEnable() end
 
     -- parent buttons des menus)
     if fCurses   and fCurses.activeCurse then   pFrame.getButton("CursesSelect").setEnable()   end

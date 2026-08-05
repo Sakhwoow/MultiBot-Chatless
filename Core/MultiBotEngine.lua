@@ -135,6 +135,33 @@ MultiBot.isInside = function(pString, ...)
 	return false
 end
 
+local function _mbNormalizeStrategyName(value)
+	if(type(value) ~= "string") then return "" end
+	local normalized = string.gsub(value, "^%s+", "")
+	normalized = string.gsub(normalized, "%s+$", "")
+	normalized = string.gsub(normalized, ",+$", "")
+	normalized = string.gsub(normalized, "%s+", " ")
+	return string.lower(normalized)
+end
+
+MultiBot.hasStrategy = function(pString, ...)
+	if(type(pString) ~= "string" or pString == "") then return false end
+
+	local wanted = {}
+	for i = 1, select("#", ...) do
+		local strategy = _mbNormalizeStrategyName(select(i, ...))
+		if(strategy ~= "") then wanted[strategy] = true end
+	end
+
+	if(next(wanted) == nil) then return false end
+
+	for token in string.gmatch(pString, "([^,]+)") do
+		if(wanted[_mbNormalizeStrategyName(token)]) then return true end
+	end
+
+	return false
+end
+
 MultiBot.beInside = function(pString, ...)
 	if(pString == nil) then return false end
 	for i = 1, select("#", ...) do
@@ -819,7 +846,93 @@ MultiBot.CollapseOtherUnitBarsForDropdown = function(targetFrame)
 	targetFrame._mbCollapsedBars = collapsedBars
 end
 
+local function _mbGetStrategyUnitButton(target)
+	if(type(target) ~= "string" or target == "") then return nil end
+	local units = MultiBot.frames
+		and MultiBot.frames["MultiBar"]
+		and MultiBot.frames["MultiBar"].frames
+		and MultiBot.frames["MultiBar"].frames["Units"]
+	if(not units or not units.buttons) then return nil end
+	return units.buttons[target]
+end
+
+local function _mbGetStrategyMutationScope(action)
+	if(type(action) ~= "string") then return nil end
+	local scope = string.match(string.lower(action), "^%s*(%a+)%s+[+-]")
+	if(scope == "co" or scope == "nc") then return scope end
+	return nil
+end
+
+local function _mbStripStrategyQuerySuffix(action)
+	if(type(action) ~= "string") then return action end
+	return (string.gsub(action, ",%?%s*$", ""))
+end
+
+local function _mbGetBridgeStateTimestamp(target)
+	local bridge = MultiBot.bridge
+	local states = bridge and bridge.states
+	local entry = states and states[string.lower(target or "")]
+	return entry and tonumber(entry.lastUpdateAt) or 0
+end
+
+local function _mbScheduleStrategyStateRefresh(target)
+	if(type(target) ~= "string" or target == "") then return end
+	if(not (MultiBot.Comm and MultiBot.Comm.RequestState)) then return end
+
+	MultiBot._strategySyncSequence = MultiBot._strategySyncSequence or {}
+	local sequence = (MultiBot._strategySyncSequence[target] or 0) + 1
+	MultiBot._strategySyncSequence[target] = sequence
+	local previousUpdateAt = _mbGetBridgeStateTimestamp(target)
+
+	local function isCurrent()
+		return MultiBot._strategySyncSequence
+			and MultiBot._strategySyncSequence[target] == sequence
+	end
+
+	local function requestState()
+		if(not isCurrent()) then return end
+		MultiBot.Comm.RequestState(target)
+	end
+
+	local function legacyFallback()
+		if(not isCurrent()) then return end
+		if(_mbGetBridgeStateTimestamp(target) > previousUpdateAt) then return end
+
+		local unitButton = _mbGetStrategyUnitButton(target)
+		if(not unitButton) then return end
+		unitButton.waitFor = "CO"
+		SendChatMessage("co ?", "WHISPER", nil, target)
+	end
+
+	if(type(MultiBot.TimerAfter) == "function") then
+		MultiBot.TimerAfter(0.45, requestState)
+		MultiBot.TimerAfter(1.00, requestState)
+		MultiBot.TimerAfter(1.80, legacyFallback)
+	else
+		requestState()
+	end
+end
+
 MultiBot.OnOffActionToTarget = function(pButton, pOn, pOff, pTarget)
+	local action = pButton.state and pOff or pOn
+	local scope = _mbGetStrategyMutationScope(action)
+	local bridgeSync = scope ~= nil
+		and MultiBot.bridge
+		and MultiBot.bridge.connected == true
+		and MultiBot.Comm
+		and MultiBot.Comm.RequestState
+
+	if(bridgeSync) then
+		if(MultiBot.ActionToTarget(_mbStripStrategyQuerySuffix(action), pTarget)) then
+			_mbScheduleStrategyStateRefresh(pTarget)
+		end
+		-- L'état visuel est reconstruit depuis l'état réel du bot.
+		return false
+	end
+
+	local unitButton = _mbGetStrategyUnitButton(pTarget)
+	if(scope and unitButton) then unitButton.waitFor = string.upper(scope) end
+
 	if(pButton.state) then
 		MultiBot.ActionToTarget(pOff, pTarget)
 		pButton.setDisable()

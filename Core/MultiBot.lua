@@ -1335,7 +1335,7 @@ end
 local FAVORITE_ROSTER_REFRESH_DELAYS = { 0, 0.8, 1.8, 3.2, 5.0, 7.5, 9.5 }
 local FAVORITE_ROSTER_REFRESH_TTL = 10.0
 
-local function GetFavoriteRosterRefreshNow()
+local function GetBridgeWorkflowNow()
   if type(GetTime) == "function" then
     return GetTime()
   end
@@ -1347,7 +1347,7 @@ local function GetFavoriteRosterRefreshNow()
   return 0
 end
 
-local function NormalizeFavoriteRosterRefreshName(name)
+local function NormalizeBridgeWorkflowName(name)
   if type(name) ~= "string" then
     return ""
   end
@@ -1367,7 +1367,7 @@ local function GetFavoriteRosterRefreshState()
 end
 
 local function PruneFavoriteRosterRefreshTargets(state)
-  local now = GetFavoriteRosterRefreshNow()
+  local now = GetBridgeWorkflowNow()
   local unresolved = 0
 
   for key, target in pairs(state.targets) do
@@ -1399,8 +1399,8 @@ function MultiBot.BeginFavoriteRosterRefresh(name)
   end
 
   local state = GetFavoriteRosterRefreshState()
-  local key = NormalizeFavoriteRosterRefreshName(name)
-  local now = GetFavoriteRosterRefreshNow()
+  local key = NormalizeBridgeWorkflowName(name)
+  local now = GetBridgeWorkflowNow()
 
   state.sequence = state.sequence + 1
   local generation = state.sequence
@@ -1417,7 +1417,7 @@ function MultiBot.BeginFavoriteRosterRefresh(name)
       return
     end
 
-    if tonumber(target.expiresAt or 0) <= GetFavoriteRosterRefreshNow() then
+    if tonumber(target.expiresAt or 0) <= GetBridgeWorkflowNow() then
       state.targets[key] = nil
       return
     end
@@ -1524,26 +1524,6 @@ local ADDCLASS_AUTO_GROUP_MAX_PENDING = 8
 local ADDCLASS_AUTO_GROUP_MAX_ATTEMPTS = 3
 local ADDCLASS_AUTO_GROUP_RETRY_DELAY = 1.5
 
-local function GetAddClassAutoGroupNow()
-  if type(GetTime) == "function" then
-    return GetTime()
-  end
-
-  if type(time) == "function" then
-    return time()
-  end
-
-  return 0
-end
-
-local function NormalizeAddClassAutoGroupName(name)
-  if type(name) ~= "string" then
-    return ""
-  end
-
-  return string.lower(name)
-end
-
 local function GetAddClassAutoGroupState()
   if type(MultiBot._addClassAutoGroup) ~= "table" then
     MultiBot._addClassAutoGroup = {}
@@ -1577,7 +1557,7 @@ local function CompleteAddClassAutoGroupTransaction(state, transaction)
 end
 
 local function CompactAddClassAutoGroupState(state)
-  local now = GetAddClassAutoGroupNow()
+  local now = GetBridgeWorkflowNow()
   local pending = {}
 
   for _, transaction in ipairs(state.pending) do
@@ -1597,7 +1577,7 @@ local function BuildAddClassAutoGroupBaseline()
   if MultiBot.bridge and type(MultiBot.bridge.roster) == "table" then
     for _, entry in ipairs(MultiBot.bridge.roster) do
       if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
-        names[NormalizeAddClassAutoGroupName(entry.name)] = true
+        names[NormalizeBridgeWorkflowName(entry.name)] = true
       end
     end
   end
@@ -1605,14 +1585,14 @@ local function BuildAddClassAutoGroupBaseline()
   if MultiBot.index and type(MultiBot.index.players) == "table" then
     for _, name in ipairs(MultiBot.index.players) do
       if type(name) == "string" and name ~= "" then
-        names[NormalizeAddClassAutoGroupName(name)] = true
+        names[NormalizeBridgeWorkflowName(name)] = true
       end
     end
   end
 
   local playerName = type(UnitName) == "function" and UnitName("player") or nil
   if type(playerName) == "string" and playerName ~= "" then
-    names[NormalizeAddClassAutoGroupName(playerName)] = true
+    names[NormalizeBridgeWorkflowName(playerName)] = true
   end
 
   return names
@@ -1655,7 +1635,7 @@ local function ScheduleAddClassAutoGroupInvite(state, transaction)
       return
     end
 
-    local now = GetAddClassAutoGroupNow()
+    local now = GetBridgeWorkflowNow()
     if now >= transaction.expiresAt then
       CompleteAddClassAutoGroupTransaction(state, transaction)
       return
@@ -1686,7 +1666,7 @@ local function ScheduleAddClassAutoGroupInvite(state, transaction)
         if IsBridgeRosterBotActive(botName) then
           CompleteAddClassAutoGroupTransaction(state, transaction)
         elseif transaction.inviteAttempts < ADDCLASS_AUTO_GROUP_MAX_ATTEMPTS
-            and GetAddClassAutoGroupNow() < transaction.expiresAt then
+            and GetBridgeWorkflowNow() < transaction.expiresAt then
           ScheduleAddClassAutoGroupInvite(state, transaction)
         end
 
@@ -1725,7 +1705,7 @@ function MultiBot.BeginAddClassAutoGroup(classCmd)
   end
 
   state.sequence = state.sequence + 1
-  local now = GetAddClassAutoGroupNow()
+  local now = GetBridgeWorkflowNow()
   local transaction = {
     id = state.sequence,
     classId = classId,
@@ -1741,7 +1721,7 @@ function MultiBot.BeginAddClassAutoGroup(classCmd)
 
   if type(MultiBot.TimerAfter) == "function" then
     MultiBot.TimerAfter(4.0, function()
-      if not transaction.completed and GetAddClassAutoGroupNow() < transaction.expiresAt
+      if not transaction.completed and GetBridgeWorkflowNow() < transaction.expiresAt
           and MultiBot.bridge and MultiBot.bridge.connected
           and MultiBot.Comm and type(MultiBot.Comm.RequestRoster) == "function" then
         MultiBot.Comm.RequestRoster()
@@ -1749,7 +1729,7 @@ function MultiBot.BeginAddClassAutoGroup(classCmd)
     end)
 
     MultiBot.TimerAfter(8.0, function()
-      if not transaction.completed and GetAddClassAutoGroupNow() < transaction.expiresAt
+      if not transaction.completed and GetBridgeWorkflowNow() < transaction.expiresAt
           and MultiBot.bridge and MultiBot.bridge.connected
           and MultiBot.Comm and type(MultiBot.Comm.RequestRoster) == "function" then
         MultiBot.Comm.RequestRoster()
@@ -1769,7 +1749,7 @@ function MultiBot.ProcessPendingAddClassRoster(roster)
   CompactAddClassAutoGroupState(state)
 
   local scheduled = 0
-  local now = GetAddClassAutoGroupNow()
+  local now = GetBridgeWorkflowNow()
 
   for _, transaction in ipairs(state.pending) do
     if not transaction.completed then
@@ -1788,7 +1768,7 @@ function MultiBot.ProcessPendingAddClassRoster(roster)
         for _, entry in ipairs(roster) do
           local name = type(entry) == "table" and entry.name or nil
           local classId = type(entry) == "table" and tonumber(entry.classId or 0) or 0
-          local key = NormalizeAddClassAutoGroupName(name)
+          local key = NormalizeBridgeWorkflowName(name)
 
           if key ~= "" and classId == transaction.classId
               and not transaction.baseline[key]

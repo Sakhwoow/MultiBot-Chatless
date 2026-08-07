@@ -2112,7 +2112,7 @@ function MultiBot.ApplyBridgeBotDetail(detail)
     return false
   end
 
-  local storedValue = nil
+  local storedValue
   if MultiBot.SetGlobalBotEntry then
     storedValue = MultiBot.SetGlobalBotEntry(detail.name, value)
   else

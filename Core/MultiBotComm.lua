@@ -14,6 +14,7 @@ Comm.version = "1"
 local STATE_FRAMING_CAPABILITY = "STATE_FRAMING_V1"
 local STRATEGY_MUTATION_CAPABILITY = "STRATEGY_MUTATION_V1"
 local STATE_TIMEOUT_SECONDS = 5.0
+local STATES_TIMEOUT_SECONDS = 15.0
 local STRATEGY_MUTATION_TIMEOUT_SECONDS = 5.0
 local STRATEGY_MUTATION_MAX_ACTIVE = 32
 local STRATEGY_MUTATION_MAX_CHANGES_LENGTH = 160
@@ -312,12 +313,13 @@ local function clearStateRequest(state, token)
   state.stateRequests[token] = nil
 end
 
-local function scheduleStateTimeout(token)
+local function scheduleStateTimeout(token, isGlobal)
   if not (MultiBot and type(MultiBot.TimerAfter) == "function") then
     return
   end
 
-  MultiBot.TimerAfter(STATE_TIMEOUT_SECONDS, function()
+  local timeoutSeconds = isGlobal and STATES_TIMEOUT_SECONDS or STATE_TIMEOUT_SECONDS
+  MultiBot.TimerAfter(timeoutSeconds, function()
     local state = ensureBridgeState()
     if not state.stateRequests[token] then
       return
@@ -364,7 +366,7 @@ local function beginStateRequest(state, botName, isGlobal)
     state.stateLatestByBot[botKey] = token
   end
 
-  scheduleStateTimeout(token)
+  scheduleStateTimeout(token, isGlobal)
   return token
 end
 
@@ -4291,17 +4293,23 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
     local fields = splitFields(payload or "")
     if #fields == 4 then
-      local requestType = string.upper(trim(urlDecodeField(fields[2])))
+      local requestType = urlDecodeFieldStrict(fields[2], 32, false)
       local token = trim(fields[3])
-      local reason = trim(urlDecodeField(fields[4]))
-      if requestType == "STRATEGY" and state.strategyMutationCommands[token] then
-        finishStrategyMutationCommand(token, {
-          status = "error",
-          matched = 0,
-          succeeded = 0,
-          failed = 0,
-          reason = reason ~= "" and reason or "PROTOCOL_ERROR",
-        })
+      local reason = urlDecodeFieldStrict(fields[4], 64, false)
+
+      requestType = requestType and string.upper(trim(requestType)) or nil
+      if requestType and isValidStateToken(token) and reason then
+        if requestType == "STRATEGY" and state.strategyMutationCommands[token] then
+          finishStrategyMutationCommand(token, {
+            status = "error",
+            matched = 0,
+            succeeded = 0,
+            failed = 0,
+            reason = reason,
+          })
+        elseif (requestType == "STATE" or requestType == "STATES") and state.stateRequests[token] then
+          clearStateRequest(state, token)
+        end
       end
     end
 

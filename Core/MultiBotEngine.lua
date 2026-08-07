@@ -474,10 +474,63 @@ MultiBot.SpellToMacro = function(pName, pSpell, pTexture)
 	PickupMacro(tMacro)
 end
 
+local function _mbParseStrategyMutation(action)
+	if(type(action) ~= "string") then return nil end
+
+	local scope, changes = string.match(action, "^%s*(%a+)%s+(.+)%s*$")
+	scope = scope and string.lower(scope) or nil
+	if(scope ~= "co" and scope ~= "nc") then return nil end
+
+	changes = string.gsub(changes or "", ",%?%s*$", "")
+	changes = string.gsub(changes, "^%s+", "")
+	changes = string.gsub(changes, "%s+$", "")
+	if(not string.match(changes, "^[+-]")) then return nil end
+
+	return scope, changes
+end
+
+local function _mbCanUseBridgeStrategyMutation()
+	return MultiBot.bridge
+		and MultiBot.bridge.connected == true
+		and MultiBot.bridge.strategyMutationCapable == true
+		and MultiBot.Comm
+		and type(MultiBot.Comm.RunStrategyCommand) == "function"
+end
+
+local function _mbRunBridgeStrategyMutation(action, commandScope, target)
+	if(not _mbCanUseBridgeStrategyMutation()) then return false end
+
+	local mutationScope, changes = _mbParseStrategyMutation(action)
+	if(not mutationScope) then return false end
+
+	commandScope = string.upper(commandScope or "BOT")
+	target = target or ""
+	local stateScope = mutationScope == "nc" and "N" or "C"
+
+	local token = MultiBot.Comm.RunStrategyCommand(commandScope, target, stateScope, changes, function(result)
+		if(type(result) ~= "table") then return end
+		if(not MultiBot.bridge or MultiBot.bridge.connected ~= true) then return end
+
+		if(commandScope == "BOT") then
+			if(MultiBot.Comm and MultiBot.Comm.RequestState) then
+				MultiBot.Comm.RequestState(target)
+			end
+		elseif(MultiBot.Comm and MultiBot.Comm.RequestStates) then
+			MultiBot.Comm.RequestStates()
+		end
+	end)
+
+	return token ~= false and token ~= nil
+end
+
 MultiBot.ActionToTarget = function(pAction, oTarget)
 	local tName = MultiBot.IF(oTarget == nil, UnitName("target"), oTarget)
 
 	if(tName ~= nil and tName ~= "Unknown Entity") then
+		if(_mbRunBridgeStrategyMutation(pAction, "BOT", tName)) then
+			return true
+		end
+
 		SendChatMessage(pAction, "WHISPER", nil, tName)
 		return true
 	end
@@ -490,16 +543,21 @@ MultiBot.ActionToTargetOrGroup = function(pAction)
 	local tName = UnitName("target")
 
 	if(tName ~= nil and tName ~= "Unknown Entity") then
-		SendChatMessage(pAction, "WHISPER", nil, tName)
-		return true
+		return MultiBot.ActionToTarget(pAction, tName)
 	end
 
 	if(GetNumRaidMembers() > 5) then
+		if(_mbRunBridgeStrategyMutation(pAction, "RAID", "")) then
+			return true
+		end
 		SendChatMessage(pAction, "RAID")
 		return true
 	end
 
 	if(GetNumPartyMembers() > 0) then
+		if(_mbRunBridgeStrategyMutation(pAction, "PARTY", "")) then
+			return true
+		end
 		SendChatMessage(pAction, "PARTY")
 		return true
 	end
@@ -510,11 +568,17 @@ end
 
 MultiBot.ActionToGroup = function(pAction)
 	if(GetNumRaidMembers() > 5) then
+		if(_mbRunBridgeStrategyMutation(pAction, "RAID", "")) then
+			return true
+		end
 		SendChatMessage(pAction, "RAID")
 		return true
 	end
 
 	if(GetNumPartyMembers() > 0) then
+		if(_mbRunBridgeStrategyMutation(pAction, "PARTY", "")) then
+			return true
+		end
 		SendChatMessage(pAction, "PARTY")
 		return true
 	end
@@ -856,85 +920,21 @@ local function _mbGetStrategyUnitButton(target)
 	return units.buttons[target]
 end
 
-local function _mbGetStrategyMutationScope(action)
-	if(type(action) ~= "string") then return nil end
-	local scope = string.match(string.lower(action), "^%s*(%a+)%s+[+-]")
-	if(scope == "co" or scope == "nc") then return scope end
-	return nil
-end
-
-local function _mbStripStrategyQuerySuffix(action)
-	if(type(action) ~= "string") then return action end
-	return (string.gsub(action, ",%?%s*$", ""))
-end
-
-local function _mbGetBridgeStateTimestamp(target)
-	local bridge = MultiBot.bridge
-	local states = bridge and bridge.states
-	local entry = states and states[string.lower(target or "")]
-	return entry and tonumber(entry.lastUpdateAt) or 0
-end
-
-local function _mbScheduleStrategyStateRefresh(target, scope)
-	if(type(target) ~= "string" or target == "") then return end
-	if(not (MultiBot.Comm and MultiBot.Comm.RequestState)) then return end
-	scope = (scope == "nc") and "nc" or "co"
-
-	MultiBot._strategySyncSequence = MultiBot._strategySyncSequence or {}
-	local sequence = (MultiBot._strategySyncSequence[target] or 0) + 1
-	MultiBot._strategySyncSequence[target] = sequence
-	local previousUpdateAt = _mbGetBridgeStateTimestamp(target)
-
-	local function isCurrent()
-		return MultiBot._strategySyncSequence
-			and MultiBot._strategySyncSequence[target] == sequence
-	end
-
-	local function requestState()
-		if(not isCurrent()) then return end
-		MultiBot.Comm.RequestState(target)
-	end
-
-	local function legacyFallback()
-		if(not isCurrent()) then return end
-		if(_mbGetBridgeStateTimestamp(target) > previousUpdateAt) then return end
-
-		local unitButton = _mbGetStrategyUnitButton(target)
-		if(not unitButton) then return end
-		unitButton.waitFor = string.upper(scope)
-		SendChatMessage(scope .. " ?", "WHISPER", nil, target)
-	end
-
-	if(type(MultiBot.TimerAfter) == "function") then
-		MultiBot.TimerAfter(0.45, requestState)
-		MultiBot.TimerAfter(1.00, requestState)
-		MultiBot.TimerAfter(1.80, legacyFallback)
-	else
-		requestState()
-	end
-end
-
 MultiBot.OnOffActionToTarget = function(pButton, pOn, pOff, pTarget)
-	local action = pButton.state and pOff or pOn
-	local scope = _mbGetStrategyMutationScope(action)
-	local bridgeSync = scope ~= nil
-		and MultiBot.bridge
-		and MultiBot.bridge.connected == true
-		and MultiBot.Comm
-		and MultiBot.Comm.RequestState
+	local wasEnabled = pButton.state == true
+	local action = wasEnabled and pOff or pOn
+	local mutationScope = _mbParseStrategyMutation(action)
 
-	if(bridgeSync) then
-		if(MultiBot.ActionToTarget(_mbStripStrategyQuerySuffix(action), pTarget)) then
-			_mbScheduleStrategyStateRefresh(pTarget, scope)
-		end
-		-- L'état visuel est reconstruit depuis l'état réel du bot.
-		return false
+	if(mutationScope and _mbRunBridgeStrategyMutation(action, "BOT", pTarget)) then
+		-- Conserve la sémantique historique du retour pour tous les appelants co/nc.
+		-- L'état visuel définitif reste reconstruit depuis l'ACK puis STATE.
+		return not wasEnabled
 	end
 
 	local unitButton = _mbGetStrategyUnitButton(pTarget)
-	if(scope and unitButton) then unitButton.waitFor = string.upper(scope) end
+	if(mutationScope and unitButton) then unitButton.waitFor = string.upper(mutationScope) end
 
-	if(pButton.state) then
+	if(wasEnabled) then
 		MultiBot.ActionToTarget(pOff, pTarget)
 		pButton.setDisable()
 		return false

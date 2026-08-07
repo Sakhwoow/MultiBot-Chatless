@@ -204,6 +204,7 @@ local function ensureBridgeState()
   state.stateRequests = state.stateRequests or {}
   state.stateActive = state.stateActive or {}
   state.stateLatestByBot = state.stateLatestByBot or {}
+  state.stateLatestOrderByBot = state.stateLatestOrderByBot or {}
   state.stateGlobalLatestToken = state.stateGlobalLatestToken or nil
   state.stateFramingCapable = state.stateFramingCapable or false
   state.strategyMutationCapable = state.strategyMutationCapable or false
@@ -340,6 +341,7 @@ local function beginStateRequest(state, botName, isGlobal)
     token = token,
     botName = botName or "",
     global = isGlobal == true,
+    order = state.stateSeq,
     startedAt = safeNow(),
     begun = false,
     expectedBots = 0,
@@ -464,6 +466,16 @@ function Comm.RequestState(name)
   if not Comm.Send("GET", "STATE~" .. urlEncodeField(name) .. "~" .. token) then
     clearStateRequest(state, token)
     return false
+  end
+
+  local request = state.stateRequests[token]
+  if type(request) == "table" then
+    local botKey = string.lower(name)
+    local requestOrder = tonumber(request.order) or 0
+    local latestOrder = tonumber(state.stateLatestOrderByBot[botKey]) or 0
+    if requestOrder > latestOrder then
+      state.stateLatestOrderByBot[botKey] = requestOrder
+    end
   end
 
   return token
@@ -1820,6 +1832,25 @@ function Comm.ApplyStateEndPayload(payload)
   elseif state.stateLatestByBot[transaction.botKey] ~= token then
     return abortStateRequest(token, "STALE_BOT")
   end
+
+  local requestOrder = tonumber(request.order) or 0
+  local latestOrder = tonumber(state.stateLatestOrderByBot[transaction.botKey]) or 0
+  if requestOrder < latestOrder then
+    state.stateActive[key] = nil
+    if request.global then
+      if not request.completedBotKeys[transaction.botKey] then
+        request.completedBotKeys[transaction.botKey] = true
+        request.completedBots = request.completedBots + 1
+      end
+    else
+      clearStateRequest(state, token)
+    end
+
+    debugPrint("ADDON:RX", "STATE_END_STALE", token, botName, requestOrder, latestOrder)
+    return true
+  end
+
+  state.stateLatestOrderByBot[transaction.botKey] = requestOrder
 
   local entry = applyStateEntry(transaction.botName, table.concat(transaction.combat, ", "), table.concat(transaction.normal, ", "))
   if not entry then
@@ -4278,6 +4309,7 @@ function Comm.OnPlayerEnteringWorld()
   state.stateRequests = {}
   state.stateActive = {}
   state.stateLatestByBot = {}
+  state.stateLatestOrderByBot = {}
   state.stateGlobalLatestToken = nil
   state.stateFramingCapable = false
   state.strategyMutationCapable = false

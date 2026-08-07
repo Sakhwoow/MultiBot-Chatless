@@ -1515,7 +1515,28 @@ function Comm.MarkDisconnected(reason)
   state.formationCommands = {}
   state.formationQueryActive = nil
   state.strategyMutationCapable = false
+  state.stateFramingCapable = false
+
+  local pendingTokens = {}
+  for token in pairs(state.strategyMutationCommands or {}) do
+    pendingTokens[#pendingTokens + 1] = token
+  end
+  for _, token in ipairs(pendingTokens) do
+    finishStrategyMutationCommand(token, {
+      status = "error",
+      matched = 0,
+      succeeded = 0,
+      failed = 0,
+      reason = "DISCONNECTED",
+    })
+  end
   state.strategyMutationCommands = {}
+
+  state.stateRequests = {}
+  state.stateActive = {}
+  state.stateLatestByBot = {}
+  state.stateLatestOrderByBot = {}
+  state.stateGlobalLatestToken = nil
 end
 
 local function parseBridgeDetailPayload(payload)

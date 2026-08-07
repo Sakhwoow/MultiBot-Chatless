@@ -508,7 +508,8 @@ local function _mbRunBridgeStrategyMutation(action, commandScope, target)
 	local stateScope = mutationScope == "nc" and "N" or "C"
 
 	local token = MultiBot.Comm.RunStrategyCommand(commandScope, target, stateScope, changes, function(result)
-		if(type(result) ~= "table" or (tonumber(result.matched) or 0) <= 0) then return end
+		if(type(result) ~= "table") then return end
+		if(not MultiBot.bridge or MultiBot.bridge.connected ~= true) then return end
 
 		if(commandScope == "BOT") then
 			if(MultiBot.Comm and MultiBot.Comm.RequestState) then

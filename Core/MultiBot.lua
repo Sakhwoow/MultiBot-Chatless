@@ -1332,7 +1332,7 @@ local function IsBridgeRosterBotActive(botName)
 end
 
 -- HOTFIX FAVORITES METADATA + ROSTER SYNC V1 START
-local FAVORITE_ROSTER_REFRESH_DELAYS = { 0, 0.8, 1.8, 3.2, 5.0, 7.5 }
+local FAVORITE_ROSTER_REFRESH_DELAYS = { 0, 0.8, 1.8, 3.2, 5.0, 7.5, 9.5 }
 local FAVORITE_ROSTER_REFRESH_TTL = 10.0
 
 local function GetFavoriteRosterRefreshNow()
@@ -1361,26 +1361,19 @@ local function GetFavoriteRosterRefreshState()
   end
 
   local state = MultiBot._favoriteRosterRefresh
-  state.generation = tonumber(state.generation or 0) or 0
+  state.sequence = tonumber(state.sequence or 0) or 0
   state.targets = type(state.targets) == "table" and state.targets or {}
   return state
 end
 
-local function PruneFavoriteRosterRefreshTargets(state, roster)
-  local visible = {}
-
-  for _, entry in ipairs(type(roster) == "table" and roster or {}) do
-    if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
-      visible[NormalizeFavoriteRosterRefreshName(entry.name)] = true
-    end
-  end
-
+local function PruneFavoriteRosterRefreshTargets(state)
   local now = GetFavoriteRosterRefreshNow()
   local unresolved = 0
 
   for key, target in pairs(state.targets) do
-    if visible[key] or type(target) ~= "table"
-        or tonumber(target.expiresAt or 0) <= now then
+    if type(target) ~= "table"
+        or tonumber(target.expiresAt or 0) <= now
+        or IsBridgeRosterBotActive(target.name) then
       state.targets[key] = nil
     else
       unresolved = unresolved + 1
@@ -1390,9 +1383,9 @@ local function PruneFavoriteRosterRefreshTargets(state, roster)
   return unresolved
 end
 
-function MultiBot.ObserveFavoriteRosterRefresh(roster)
+function MultiBot.ObserveFavoriteRosterRefresh(_)
   local state = GetFavoriteRosterRefreshState()
-  return PruneFavoriteRosterRefreshTargets(state, roster)
+  return PruneFavoriteRosterRefreshTargets(state)
 end
 
 function MultiBot.BeginFavoriteRosterRefresh(name)
@@ -1409,23 +1402,23 @@ function MultiBot.BeginFavoriteRosterRefresh(name)
   local key = NormalizeFavoriteRosterRefreshName(name)
   local now = GetFavoriteRosterRefreshNow()
 
+  state.sequence = state.sequence + 1
+  local generation = state.sequence
+
   state.targets[key] = {
     name = name,
     expiresAt = now + FAVORITE_ROSTER_REFRESH_TTL,
+    generation = generation,
   }
 
-  state.generation = state.generation + 1
-  local generation = state.generation
-
   local function requestRoster(attempt)
-    if state.generation ~= generation then
+    local target = state.targets[key]
+    if type(target) ~= "table" or target.generation ~= generation then
       return
     end
 
-    if PruneFavoriteRosterRefreshTargets(
-        state,
-        MultiBot.bridge and MultiBot.bridge.roster
-      ) == 0 then
+    if tonumber(target.expiresAt or 0) <= GetFavoriteRosterRefreshNow() then
+      state.targets[key] = nil
       return
     end
 
@@ -1435,10 +1428,7 @@ function MultiBot.BeginFavoriteRosterRefresh(name)
     end
 
     if attempt >= #FAVORITE_ROSTER_REFRESH_DELAYS then
-      PruneFavoriteRosterRefreshTargets(
-        state,
-        MultiBot.bridge and MultiBot.bridge.roster
-      )
+      PruneFavoriteRosterRefreshTargets(state)
     end
   end
 
@@ -1466,6 +1456,13 @@ local function UpdateBridgeUnitButton(button, className, level, name)
   local classCanon = (MultiBot.toClass and MultiBot.toClass(className or "UNKNOWN")) or "UNKNOWN"
   if type(classCanon) ~= "string" or classCanon == "" then
     classCanon = "UNKNOWN"
+  end
+
+  if string.lower(classCanon) == "unknown"
+      and type(button.class) == "string"
+      and button.class ~= ""
+      and string.lower(button.class) ~= "unknown" then
+    classCanon = button.class
   end
 
   local texture = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -1889,6 +1886,13 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
   local buttons = units.buttons or {}
   local frames = units.frames or {}
   local visibleNames = {}
+  local previousActive = {}
+
+  for _, activeName in ipairs(MultiBot.index.actives or {}) do
+    if type(activeName) == "string" and activeName ~= "" then
+      previousActive[string.lower(activeName)] = true
+    end
+  end
 
   local playerName = nil
   if type(UnitName) == "function" then
@@ -1961,6 +1965,16 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
           table.insert(MultiBot.index.actives, entry.name)
           if button.setEnable then
             button.setEnable()
+          end
+
+          local activeKey = string.lower(entry.name)
+          if previousActive[activeKey] ~= true
+              and MultiBot.bridge and MultiBot.bridge.connected
+              and MultiBot.Comm and type(MultiBot.Comm.RequestState) == "function" then
+            local stateRequest = MultiBot.Comm.RequestState(entry.name)
+            if stateRequest then
+              button.waitFor = "BRIDGE_STATE"
+            end
           end
         else
           if button.setDisable then
@@ -2043,7 +2057,7 @@ local function NormalizeBridgeDetailStoreGender(value)
     return "[F]"
   end
 
-  if string.match(gender, "^%[[^%]]+%]$") then
+  if string.match(gender, "^%[[^%],]+%]$") then
     return gender
   end
 

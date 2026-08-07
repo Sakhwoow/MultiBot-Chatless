@@ -108,6 +108,7 @@ RUN~RTI
 RUN~COMBAT
 RUN~POSITION
 RUN~LOOT
+RUN~STRATEGY
 RUN~FORMATION
 ```
 
@@ -124,6 +125,21 @@ FORMATIONS_END~<token>~<sentCount>
 ```
 
 `GROUP` covers every controllable bot in the player's current party or raid. It does not target individual raid subgroups.
+
+## Current state and strategy capabilities
+
+The addon and bridge now negotiate two dedicated capabilities for authoritative bot-state synchronization and strategy mutations:
+
+```text
+STATE_FRAMING_V1
+STRATEGY_MUTATION_V1
+```
+
+`STATE_FRAMING_V1` uses tokenized `STATE` / `STATES` transactions with framed responses, bounded payloads, cleanup on terminal errors/timeouts, and stale-response protection. Per-bot requests use a 5-second timeout; global state requests use a 15-second timeout.
+
+`STRATEGY_MUTATION_V1` provides structured `co/nc` mutations through `RUN~STRATEGY` and completion through `STRATEGY_ACK`. The bridge reports matched, succeeded and failed bot counts, while the addon applies explicit timeout and rejection diagnostics.
+
+The migration is intentionally incremental. Some specialized legacy UI paths still issue Playerbots chat commands directly and must be migrated before the addon can be described as fully chatless. The current known priority includes Warlock stone, soulstone, pet and curse selectors.
 
 Manual playerbot commands are still intentionally preserved for diagnostics and gameplay actions.
 
@@ -160,7 +176,11 @@ The goal is to remove automatic UI-refresh spam.
   </tr>
   <tr>
     <td>Bot states</td>
-    <td><strong>Bridge-first</strong></td>
+    <td><strong>Bridge-first, framed</strong> — <code>STATE_FRAMING_V1</code>, tokenized <code>STATE/STATES</code> transactions, bounded payloads, timeout cleanup and stale-response protection</td>
+  </tr>
+  <tr>
+    <td>Strategy mutations</td>
+    <td><strong>Bridge-first where migrated</strong> — <code>STRATEGY_MUTATION_V1</code>, <code>RUN~STRATEGY</code>, <code>STRATEGY_ACK</code> and explicit rejection/timeout diagnostics</td>
   </tr>
   <tr>
     <td>Bot details</td>
@@ -484,7 +504,8 @@ Implemented bridge-first / chatless areas:
 
 - Bridge handshake: `HELLO`, `HELLO_ACK`, `PING`, `PONG`.
 - Roster refresh.
-- Bot states refresh.
+- Bot states through `STATE_FRAMING_V1`, with tokenized per-bot/global transactions, framed responses, bounded state payloads, timeout cleanup and stale-response protection.
+- Strategy mutations through `STRATEGY_MUTATION_V1` for migrated controls, with `RUN~STRATEGY`, `STRATEGY_ACK`, result counters and explicit rejection/timeout diagnostics.
 - Bot details refresh.
 - Stats refresh.
 - PvP stats refresh.
@@ -512,6 +533,19 @@ Implemented bridge-first / chatless areas:
 - Talent tab navigation stability after switching between tabs.
 - Automatic bot reconnect on login/reload for bots already present in the group or raid.
 - Units bar refresh after adding a bot through AddClass.
+
+Validated development milestones on the current line:
+
+- PR #49 — bridge synchronization, strategy controls, persistent/offline favorites and STATE stabilization.
+- PR #50 — explicit strategy-command rejection diagnostics.
+- PR #51 — mechanical deduplication of shared roster workflow helpers.
+- Final static STATE/strategy audit on 2026-08-07: 57 checks, 0 failures; final manual runtime matrix remains pending.
+
+Known migration remaining:
+
+- Some specialized UI controls still issue direct `co/nc` chat commands. The current priority is the Warlock stone, soulstone, pet and curse selectors.
+- Other `SendChatMessage` occurrences remain to be classified as manual command, diagnostic fallback, information message, UI mechanism to migrate, or dead code.
+- The project should be described as **bridge-first / mostly chatless**, not fully chatless, until these remaining paths are migrated and the final runtime matrix is closed.
 
 Kept intentionally:
 

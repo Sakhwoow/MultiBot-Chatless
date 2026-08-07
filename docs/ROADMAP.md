@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026.  
-Dernière mise à jour : 04/08/2026 par `patch-multibot-roadmap-jellypowered-integration-v1-2026-08-04-113000`.  
+Dernière mise à jour : 07/08/2026 — état post-PR #49/#50/#51 et audit final statique STATE/stratégies v1.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -9,10 +9,10 @@ Cette roadmap est la source de vérité active du projet. Les anciens trackers e
 - Addon : `L:\ChromieCraft_3.3.5a\Interface\AddOns\MultiBot`
 - Bridge : `L:\AC_PB\azerothcore-wotlk\modules\mod-multibot-bridge`
 - Playerbots : `L:\AC_PB\azerothcore-wotlk\modules\mod-playerbots` — lecture seule stricte
-- Addon : 342 fichiers, dépôt Git propre, branche `main`, commit `ef341a4fb4b39f04a677e871b6b31b5280a38789`
-- AzerothCore : dépôt Git propre, branche `Playerbot`, commit `190184a04539937a617bf033e39378196c0c63f5`
+- Addon : baseline post-PR #51 auditée, dépôt Git propre, branche `main`, commit `270911305acf3e806d389712a34a9433131db981`
+- AzerothCore : dépôt Git propre pour les modules bridge/Playerbots audités, branche `Playerbot`, commit `092e9ba6ff8dc6d861dddd1f31baa9d404381a85`
 - Bridge : 7 fichiers, logique principale concentrée dans `src/MultiBotBridge.cpp`
-- Communication actuelle : bridge-first pour les principaux rafraîchissements UI, mais 162 occurrences `SendChatMessage` restent à classifier côté addon.
+- Communication actuelle : bridge-first pour les principaux rafraîchissements UI ; l'audit final du 07/08/2026 relève encore 159 lignes `SendChatMessage` à classifier, dont des reliquats `co/nc` directs dans des contrôles spécialisés.
 - Fallback automatique legacy désactivé par défaut : `MultiBot.allowLegacyChatFallback = false`.
 
 ## Règles de progression
@@ -74,7 +74,7 @@ Politique de tests :
 - les tests exhaustifs transversaux de toutes les fonctions pourront être exécutés vers la fin du projet ;
 - ce report des tests exhaustifs ne permet pas de déclarer une fonction validée avant ses propres tests ciblés.
 
-Prochaine étape : exécuter et analyser l'audit local `audit-multibot-jellypowered-pr-v1`, puis proposer l'ordre d'intégration réel à partir des API et conflits constatés.
+Statut de reprise : contribution conservée pour un audit/intégration ultérieurs. La prochaine étape immédiate du projet est la migration des reliquats UI `co/nc` encore directs, puis la clôture de la matrice runtime finale STATE/stratégies. L'audit Jellypowered reprendra ensuite selon l'ordre validé.
 
 ## Phase 0 — Assainissement documentaire — TERMINÉE
 
@@ -129,6 +129,50 @@ Preuves de validation :
 Reste explicitement hors périmètre :
 
 - la formation Playerbots `far` existe dans le module de référence mais n'est pas exposée par l'interface actuelle.
+
+## Validation intermédiaire — STATE framing + Strategy Mutation — STATIQUE VALIDÉE LE 07/08/2026, RUNTIME FINAL À TERMINER
+
+Baseline intégrée :
+
+- PR #49 : synchronisation bridge, contrôles stratégies, favoris persistants et stabilisation STATE ;
+- PR #50 : diagnostics explicites des rejets `RunStrategyCommand` ;
+- PR #51 : déduplication mécanique des helpers partagés de workflow roster ;
+- addon `main` : `270911305acf3e806d389712a34a9433131db981`.
+
+État STATE validé statiquement :
+
+- capacité `STATE_FRAMING_V1` présente côté addon et bridge ;
+- requêtes unitaires `GET~STATE` et globales `GET~STATES` gérées par transactions tokenisées ;
+- framing `STATE_BEGIN/STATE_ITEM/STATE_END` et framing global `STATES_BEGIN/.../STATES_END` ;
+- `STATE_ABORT` pris en compte comme échec de la requête concernée ;
+- timeout par bot à 5 s et timeout global à 15 s ;
+- limite de 32 requêtes STATE actives, 128 bots, 256 stratégies par scope, 192 caractères par stratégie et 32768 octets cumulés ;
+- nettoyage des transactions sur timeout/erreur/déconnexion ;
+- garde d'ordre par bot pour empêcher une réponse ancienne de remplacer un état plus récent.
+
+État mutations stratégies validé statiquement :
+
+- capacité `STRATEGY_MUTATION_V1` présente côté addon et bridge ;
+- mutations `co/nc` structurées via `RUN~STRATEGY` pour les chemins utilisant `MultiBot.Comm.RunStrategyCommand()` ;
+- résultat serveur via `STRATEGY_ACK` avec compteurs `matched/succeeded/failed` ;
+- limites de taille, nombre d'opérations et requêtes actives ;
+- timeout à 5 s ;
+- neuf diagnostics de rejet explicites ajoutés par F07 ;
+- `RunStrategyCommand()` ne contient aucun `SendChatMessage`.
+
+Preuve d'audit final statique :
+
+- archive : `audit-multibot-state-strategy-final-v1-2026-08-07-224000-2026-08-07-224709.zip` ;
+- SHA-256 : `B00DBE597F554F9E20F2ABEFDC22097BC2A06DCDD3F07FD9F6522F98A7DF38DA` ;
+- 57 contrôles, 0 échec ;
+- addon, bridge et `mod-playerbots` ont des empreintes avant/après identiques pendant l'audit ;
+- `mod-playerbots` reste strictement en lecture seule.
+
+Reste à terminer avant de fermer définitivement ce bloc :
+
+- migrer les reliquats UI `co/nc` directs encore présents, notamment les sélecteurs Warlock de pierres, soulstones, pets et curses ;
+- exécuter/consolider la matrice runtime finale : zéro/un/plusieurs bots, listes longues, fragment manquant/dupliqué/désordonné, réponse tardive, timeouts, déconnexion en cours de transaction, mutations valides/invalides, bot absent, plusieurs bots, smoke test toutes classes, zéro erreur Lua, contrôle chat et logs ;
+- ne pas déclarer le projet entièrement chatless tant que ces reliquats et les autres familles legacy ne sont pas classifiés/migrés.
 
 ## Phase 1 — Baseline de compilation et tests de non-régression
 
@@ -219,16 +263,18 @@ Ordre recommandé :
 
 1. **Formations — application par clic gauche : VALIDÉE** via `RUN~FORMATION~GROUP` par `patch-multibot-formation-chatless-v1c-2026-08-01-181300`.
 2. **Consultation de la formation actuelle par clic droit : VALIDÉE** via `GET~FORMATIONS~GROUP`, `FORMATIONS_BEGIN/ITEM/END` et un tooltip local traduit.
-3. `s *` — vente générale bridge-first.
-4. `s vendor` — vente vendeur bridge-first, sans whisper item par item.
-5. `open items` — ouverture de conteneurs bridge-first.
-6. `roll` et `roll [item]`.
-7. Enchantement d'objet, après validation du flux trade/cast disponible sans modification de Playerbots.
-8. Ajout/retrait d'items précis dans les règles de loot.
-9. Décision sur `Quest`/`Skill` versus `Disenchant`, sans inventer de stratégie absente de Playerbots.
-10. Ordres collectifs `follow`, `attack`, `stay` seulement après validation manuelle exacte des sélecteurs Playerbots ; ne pas réintroduire `RUN~ORDER` générique.
+3. **Infrastructure mutations stratégies `co/nc` : VALIDÉE STATIQUEMENT** via `STRATEGY_MUTATION_V1`, `RUN~STRATEGY`, `STRATEGY_ACK`, timeouts, limites et diagnostics explicites.
+4. **Reliquats UI `co/nc` directs : À MIGRER EN PRIORITÉ** — l'audit final relève notamment les sélecteurs Warlock de pierres, soulstones, pets et curses encore basés sur `SendChatMessage`.
+5. `s *` — vente générale bridge-first.
+6. `s vendor` — vente vendeur bridge-first, sans whisper item par item.
+7. `open items` — ouverture de conteneurs bridge-first.
+8. `roll` et `roll [item]`.
+9. Enchantement d'objet, après validation du flux trade/cast disponible sans modification de Playerbots.
+10. Ajout/retrait d'items précis dans les règles de loot.
+11. Décision sur `Quest`/`Skill` versus `Disenchant`, sans inventer de stratégie absente de Playerbots.
+12. Ordres collectifs `follow`, `attack`, `stay` seulement après validation manuelle exacte des sélecteurs Playerbots ; ne pas réintroduire `RUN~ORDER` générique.
 
-Les commandes informatives `who`, `co ?`, `nc ?` et `ss ?` restent manuelles tant qu'aucune UI structurée ne les remplace.
+Les commandes informatives `who`, `co ?`, `nc ?` et `ss ?` restent manuelles tant qu'aucune UI structurée ne les remplace. Les mutations UI automatiques `co/nc`, en revanche, doivent passer par le bridge dès qu'un contrat structuré validé existe.
 
 Critère de sortie : chaque famille migrée fonctionne bridge-first et ne génère plus de réponse chat automatique.
 

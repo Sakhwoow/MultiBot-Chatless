@@ -680,7 +680,12 @@ end
 function Comm.RunStrategyCommand(scope, target, stateScope, changes, callback)
   local state = ensureBridgeState()
 
-  if not state.connected or not state.strategyMutationCapable then
+  if not state.connected then
+    state.lastError = "STRATEGY_NOT_CONNECTED"
+    return false
+  end
+  if not state.strategyMutationCapable then
+    state.lastError = "STRATEGY_CAPABILITY_UNAVAILABLE"
     return false
   end
 
@@ -690,18 +695,27 @@ function Comm.RunStrategyCommand(scope, target, stateScope, changes, callback)
   changes = validateStrategyMutationChanges(changes)
 
   if scope ~= "ALL" and scope ~= "GROUP" and scope ~= "PARTY" and scope ~= "RAID" and scope ~= "BOT" then
+    state.lastError = "STRATEGY_INVALID_SCOPE"
     return false
   end
   if scope == "BOT" and target == "" then
+    state.lastError = "STRATEGY_TARGET_REQUIRED"
     return false
   end
   if scope ~= "BOT" and target ~= "" then
+    state.lastError = "STRATEGY_TARGET_NOT_ALLOWED"
     return false
   end
   if stateScope ~= "C" and stateScope ~= "N" then
+    state.lastError = "STRATEGY_INVALID_STATE_SCOPE"
     return false
   end
-  if not changes or countTableEntries(state.strategyMutationCommands) >= STRATEGY_MUTATION_MAX_ACTIVE then
+  if not changes then
+    state.lastError = "STRATEGY_INVALID_CHANGES"
+    return false
+  end
+  if countTableEntries(state.strategyMutationCommands) >= STRATEGY_MUTATION_MAX_ACTIVE then
+    state.lastError = "STRATEGY_TOO_MANY_REQUESTS"
     return false
   end
 
@@ -725,6 +739,7 @@ function Comm.RunStrategyCommand(scope, target, stateScope, changes, callback)
 
   if not Comm.Send("RUN", payload) then
     state.strategyMutationCommands[token] = nil
+    state.lastError = "STRATEGY_SEND_FAILED"
     return false
   end
 

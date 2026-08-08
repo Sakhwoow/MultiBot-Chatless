@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026.  
-Dernière mise à jour : 07/08/2026 — état post-PR #49/#50/#51 et audit final statique STATE/stratégies v1.
+Dernière mise à jour : 08/08/2026 — validation runtime du lot Warlock chatless, diagnostic TEMP_ENCHANT et bascule Firestone/Spellstone bridge-only.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -170,9 +170,41 @@ Preuve d'audit final statique :
 
 Reste à terminer avant de fermer définitivement ce bloc :
 
-- migrer les reliquats UI `co/nc` directs encore présents, notamment les sélecteurs Warlock de pierres, soulstones, pets et curses ;
+- le lot Warlock Stones/Soulstones/Pets/Curses est validé au 08/08/2026 et ne fait plus partie des reliquats `co/nc` prioritaires ;
 - exécuter/consolider la matrice runtime finale : zéro/un/plusieurs bots, listes longues, fragment manquant/dupliqué/désordonné, réponse tardive, timeouts, déconnexion en cours de transaction, mutations valides/invalides, bot absent, plusieurs bots, smoke test toutes classes, zéro erreur Lua, contrôle chat et logs ;
-- ne pas déclarer le projet entièrement chatless tant que ces reliquats et les autres familles legacy ne sont pas classifiés/migrés.
+- classifier puis migrer les autres familles legacy réellement automatiques avant de déclarer le projet entièrement chatless.
+
+## Validation livrée — Sélecteurs Warlock chatless + Stones — VALIDÉE LE 08/08/2026
+
+Périmètre addon validé :
+
+- les sélecteurs Warlock Stones, Soulstones, Pets et Curses ne contiennent plus de `SendChatMessage` direct pour leurs mutations `co/nc` ; ils passent par `MultiBot.ActionToTarget()` puis `STRATEGY_MUTATION_V1` / `RUN~STRATEGY` lorsque le bridge est disponible ;
+- `MultiBot.ActionToTarget()` distingue désormais le transport `bridge` du fallback `chat` ; avec le bridge, les sélecteurs n'appliquent plus d'état local optimiste et attendent l'état serveur autoritatif ; le fallback chat conserve son comportement immédiat de compatibilité ;
+- les contrôles Warlock invalides `dps` et `dps debuff` ont été retirés, le placeholder Buff désactivé a été supprimé et le layout des contrôles a été compacté ;
+- les quatre avertissements LuaLint ciblés sur les variables `action` ont été corrigés sans modifier le comportement.
+
+Diagnostic TEMP_ENCHANT validé :
+
+- `/mbdebug enchant [bot]` envoie à la demande `GET~WEAPON_ENCHANT` et affiche la réponse structurée `WEAPON_ENCHANT` ;
+- le bridge lit l'item, l'ID de `TEMP_ENCHANTMENT_SLOT` et sa durée sur main-hand/off-hand ;
+- l'endpoint est limité au bot visible et contrôlable, conserve `CheckLevelFor(...)`, et applique un rate-limit de 500 ms par requester ;
+- aucun polling automatique n'est introduit et `mod-playerbots` n'est pas modifié.
+
+Cause et correction Firestone/Spellstone :
+
+- l'audit Playerbots en lecture seule a confirmé que `ItemForSpellValue` et `UseItemAction::UseItem()` refusent de cibler une arme dont `TEMP_ENCHANTMENT_SLOT` est déjà occupé ; la stratégie peut donc changer sans remplacer la pierre déjà appliquée ;
+- le correctif reste dans `mod-multibot-bridge` : uniquement pour un Warlock, en `BOT_STATE_NON_COMBAT`, lors d'un vrai switch exclusif `firestone` ↔ `spellstone` ;
+- le bridge découvre dynamiquement les enchant IDs des Firestone/Spellstone portées par le bot, refuse d'effacer un enchantement temporaire non reconnu, retire proprement l'ancien enchantement reconnu, puis réutilise l'action Playerbots existante avec `DoSpecificAction()` ;
+- aucun ID Firestone/Spellstone n'est hardcodé dans le correctif et aucun fichier de `mod-playerbots` n'est modifié.
+
+Preuves runtime :
+
+- compilation Visual Studio `RelWithDebInfo x64` : 3 projets réussis, 0 échec ; worldserver démarré sans erreur bridge ;
+- Apha, Spellstone → Firestone : `TEMP_ENCHANTMENT_SLOT` `3620` → `3614`, durée finale `3600000 ms`, utilisation réelle de Grand Firestone observée ;
+- Apha, Firestone → Spellstone : `TEMP_ENCHANTMENT_SLOT` `3614` → `3620`, durée finale `3600000 ms`, utilisation réelle de Grand Spellstone observée ;
+- audit final : `audit-multibot-warlock-stone-force-switch-final-v1-2026-08-08-160400-2026-08-08-160706.zip`, SHA-256 `C0025FCAC7817711B0D5493EA3349B5F57A3AA620C260E76F59E1CAA92F7EA1A` ;
+- archivage patch : `patch-multibot-warlock-stone-force-switch-v1b-2026-08-08-154300-results-2026-08-08-162451.zip`, SHA-256 `8FABF24B50EA459EF6C7EE4A0D0BE21CFB251D1C7DEF6505C7C483BF43141C5B` ;
+- `mod-playerbots` reste strictement en lecture seule.
 
 ## Phase 1 — Baseline de compilation et tests de non-régression
 
@@ -264,7 +296,7 @@ Ordre recommandé :
 1. **Formations — application par clic gauche : VALIDÉE** via `RUN~FORMATION~GROUP` par `patch-multibot-formation-chatless-v1c-2026-08-01-181300`.
 2. **Consultation de la formation actuelle par clic droit : VALIDÉE** via `GET~FORMATIONS~GROUP`, `FORMATIONS_BEGIN/ITEM/END` et un tooltip local traduit.
 3. **Infrastructure mutations stratégies `co/nc` : VALIDÉE STATIQUEMENT** via `STRATEGY_MUTATION_V1`, `RUN~STRATEGY`, `STRATEGY_ACK`, timeouts, limites et diagnostics explicites.
-4. **Reliquats UI `co/nc` directs : À MIGRER EN PRIORITÉ** — l'audit final relève notamment les sélecteurs Warlock de pierres, soulstones, pets et curses encore basés sur `SendChatMessage`.
+4. **Sélecteurs Warlock Stones/Soulstones/Pets/Curses : VALIDÉS** — mutations via `STRATEGY_MUTATION_V1` / `RUN~STRATEGY`, état UI autoritatif côté bridge et bascule réelle Firestone/Spellstone validée sans modification de Playerbots.
 5. `s *` — vente générale bridge-first.
 6. `s vendor` — vente vendeur bridge-first, sans whisper item par item.
 7. `open items` — ouverture de conteneurs bridge-first.

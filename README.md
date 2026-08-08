@@ -84,6 +84,7 @@ MBOT HELLO
 MBOT PING
 GET~ROSTER
 GET~STATES
+GET~WEAPON_ENCHANT
 GET~DETAILS
 GET~STATS
 GET~PVP_STATS
@@ -139,7 +140,7 @@ STRATEGY_MUTATION_V1
 
 `STRATEGY_MUTATION_V1` provides structured `co/nc` mutations through `RUN~STRATEGY` and completion through `STRATEGY_ACK`. The bridge reports matched, succeeded and failed bot counts, while the addon applies explicit timeout and rejection diagnostics.
 
-The migration is intentionally incremental. Some specialized legacy UI paths still issue Playerbots chat commands directly and must be migrated before the addon can be described as fully chatless. The current known priority includes Warlock stone, soulstone, pet and curse selectors.
+The migration is intentionally incremental. The Warlock stone, soulstone, pet and curse selectors are now migrated to structured `RUN~STRATEGY` mutations. When those selectors use the bridge, the addon waits for authoritative server `STATE` data before committing the selected UI state instead of applying an optimistic local state. Other specialized legacy UI paths still issue Playerbots chat commands directly and must be migrated before the addon can be described as fully chatless.
 
 Manual playerbot commands are still intentionally preserved for diagnostics and gameplay actions.
 
@@ -156,6 +157,16 @@ still work when the player explicitly wants to inspect a bot state.
 
 The goal is not to remove useful manual commands.  
 The goal is to remove automatic UI-refresh spam.
+
+### Warlock weapon-enchant diagnostic
+
+For targeted runtime diagnostics, the addon exposes:
+
+```text
+/mbdebug enchant [bot]
+```
+
+If the bot name is omitted, the current target is used. The command sends a single `GET~WEAPON_ENCHANT` request and displays the structured `WEAPON_ENCHANT` response with main-hand/off-hand item entries, temporary enchant IDs and remaining durations. This path is diagnostic only: it is on-demand, server-authorized and rate-limited, and is not used for polling or normal selector state synchronization.
 
 ---
 
@@ -181,6 +192,10 @@ The goal is to remove automatic UI-refresh spam.
   <tr>
     <td>Strategy mutations</td>
     <td><strong>Bridge-first where migrated</strong> — <code>STRATEGY_MUTATION_V1</code>, <code>RUN~STRATEGY</code>, <code>STRATEGY_ACK</code> and explicit rejection/timeout diagnostics</td>
+  </tr>
+  <tr>
+    <td>Warlock strategy selectors</td>
+    <td><strong>Bridge-first and runtime validated</strong> — Stones, Soulstones, Pets and Curses use structured strategy mutations; bridge-backed selections wait for authoritative state, invalid Warlock <code>dps</code>/<code>dps debuff</code> controls and the disabled Buff placeholder were removed, and the selector layout was compacted</td>
   </tr>
   <tr>
     <td>Bot details</td>
@@ -540,12 +555,12 @@ Validated development milestones on the current line:
 - PR #50 — explicit strategy-command rejection diagnostics.
 - PR #51 — mechanical deduplication of shared roster workflow helpers.
 - Final static STATE/strategy audit on 2026-08-07: 57 checks, 0 failures; final manual runtime matrix remains pending.
+- Warlock selector batch validated on 2026-08-08: Stones, Soulstones, Pets and Curses migrated to bridge strategy mutations; authoritative bridge state handling validated; Firestone/Spellstone temporary-enchant switching validated bidirectionally with the companion bridge.
 
 Known migration remaining:
 
-- Some specialized UI controls still issue direct `co/nc` chat commands. The current priority is the Warlock stone, soulstone, pet and curse selectors.
-- Other `SendChatMessage` occurrences remain to be classified as manual command, diagnostic fallback, information message, UI mechanism to migrate, or dead code.
-- The project should be described as **bridge-first / mostly chatless**, not fully chatless, until these remaining paths are migrated and the final runtime matrix is closed.
+- Remaining direct `SendChatMessage` occurrences outside the validated Warlock selector batch still need to be classified as manual command, diagnostic fallback, information message, UI mechanism to migrate, or dead code.
+- The project should be described as **bridge-first / mostly chatless**, not fully chatless, until these remaining paths are classified/migrated and the final runtime matrix is closed.
 
 Kept intentionally:
 

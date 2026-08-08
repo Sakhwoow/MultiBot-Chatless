@@ -211,6 +211,7 @@ local function ensureBridgeState()
   state.strategyMutationCapable = state.strategyMutationCapable or false
   state.strategyMutationSeq = state.strategyMutationSeq or 0
   state.strategyMutationCommands = state.strategyMutationCommands or {}
+  state.weaponEnchantDebugSeq = state.weaponEnchantDebugSeq or 0
   state.details = state.details or {}
   state.professions = state.professions or {}
   state.pvpStats = state.pvpStats or {}
@@ -524,6 +525,30 @@ function Comm.RequestStats(name)
   end
 
   return Comm.Send("GET", "STATS")
+end
+
+function Comm.RequestWeaponEnchantDebug(name)
+  local state = ensureBridgeState()
+  if not state.connected then
+    state.lastError = "WEAPON_ENCHANT_NOT_CONNECTED"
+    return false
+  end
+
+  name = trim(name)
+  if name == "" or #name > 64 then
+    state.lastError = "WEAPON_ENCHANT_BAD_BOT_NAME"
+    return false
+  end
+
+  state.weaponEnchantDebugSeq = (tonumber(state.weaponEnchantDebugSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-enchant-" .. tostring(state.weaponEnchantDebugSeq)
+
+  if not Comm.Send("GET", "WEAPON_ENCHANT~" .. urlEncodeField(name) .. "~" .. token) then
+    state.lastError = "WEAPON_ENCHANT_SEND_FAILED"
+    return false
+  end
+
+  return token
 end
 
 function Comm.RequestTalentSpecList(name)
@@ -3212,6 +3237,58 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       end
     end
     debugPrint("ADDON:RX", "CAPS", payload or "")
+    return true
+  end
+
+  if opcode == "WEAPON_ENCHANT" then
+    state.connected = true
+
+    local fields = splitFields(payload)
+    if #fields ~= 9 then
+      state.lastError = "WEAPON_ENCHANT_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local token = trim(fields[1])
+    local botName = urlDecodeFieldStrict(fields[2], 64, false)
+    local status = string.upper(trim(fields[3]))
+    local mainItem = parseBoundedInteger(fields[4], 0, 4294967295)
+    local mainEnchant = parseBoundedInteger(fields[5], 0, 4294967295)
+    local mainDuration = parseBoundedInteger(fields[6], 0, 4294967295)
+    local offItem = parseBoundedInteger(fields[7], 0, 4294967295)
+    local offEnchant = parseBoundedInteger(fields[8], 0, 4294967295)
+    local offDuration = parseBoundedInteger(fields[9], 0, 4294967295)
+
+    if not isValidStateToken(token)
+        or not botName
+        or (status ~= "OK" and status ~= "RATE_LIMIT" and status ~= "BOT_NOT_VISIBLE" and status ~= "FORBIDDEN")
+        or mainItem == nil
+        or mainEnchant == nil
+        or mainDuration == nil
+        or offItem == nil
+        or offEnchant == nil
+        or offDuration == nil then
+      state.lastError = "WEAPON_ENCHANT_BAD_PAYLOAD"
+      return true
+    end
+
+    state.lastError = status == "OK" and nil or ("WEAPON_ENCHANT_" .. status)
+    debugPrint("ADDON:RX", "WEAPON_ENCHANT", payload or "")
+
+    if MultiBot.OnWeaponEnchantDebug then
+      MultiBot.OnWeaponEnchantDebug({
+        token = token,
+        botName = botName,
+        status = status,
+        mainItem = mainItem,
+        mainEnchant = mainEnchant,
+        mainDuration = mainDuration,
+        offItem = offItem,
+        offEnchant = offEnchant,
+        offDuration = offDuration,
+      })
+    end
+
     return true
   end
 

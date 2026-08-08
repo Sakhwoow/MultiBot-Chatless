@@ -148,7 +148,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 	local function ToggleStone(pButton, label, cmd)
 		local target = pButton.getName()
 		local desired = nil
-		local action = nil
+		local action
 
 		if fStones.activeStone == label then
 			action = "nc -" .. cmd .. ",?"
@@ -163,9 +163,12 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 			end
 		end
 
-		if not MultiBot.ActionToTarget(action, target) then return end
-		fStones.activeStone = desired
-		UpdateStoneIcons(fStones.activeStone)
+		local sent, transport = MultiBot.ActionToTarget(action, target)
+		if not sent then return end
+		if transport ~= "bridge" then
+			fStones.activeStone = desired
+			UpdateStoneIcons(fStones.activeStone)
+		end
 		fStones:Hide()
 	end
 
@@ -230,7 +233,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 	local function ToggleSS(pButton, label, cmd)
 		local target = pButton.getName()
 		local desired = nil
-		local action = nil
+		local action
 
 		if fSoul.activeSS == label then
 			action = "nc -" .. cmd .. ",?"
@@ -255,9 +258,12 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
 			end
 		end
 
-		if not MultiBot.ActionToTarget(action, target) then return end
-		fSoul.activeSS = desired
-		UpdateSSIcons(fSoul.activeSS)
+		local sent, transport = MultiBot.ActionToTarget(action, target)
+		if not sent then return end
+		if transport ~= "bridge" then
+			fSoul.activeSS = desired
+			UpdateSSIcons(fSoul.activeSS)
+		end
 		fSoul:Hide()
 	end
 
@@ -326,7 +332,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
     local function TogglePet(pButton, label, cmd)
       local target = pButton.getName()
       local desired = nil
-      local action = nil
+      local action
 
       if fPets.activePet == label then
         action = "nc -" .. cmd .. ",?"
@@ -351,9 +357,12 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
         end
       end
 
-      if not MultiBot.ActionToTarget(action, target) then return end
-      fPets.activePet = desired
-      UpdatePetIcons(fPets.activePet)
+      local sent, transport = MultiBot.ActionToTarget(action, target)
+      if not sent then return end
+      if transport ~= "bridge" then
+        fPets.activePet = desired
+        UpdatePetIcons(fPets.activePet)
+      end
       fPets:Hide()
     end
 
@@ -503,7 +512,7 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
      b.doLeft = function(pButton)
        local target = pButton.getName()
        local desired = nil
-       local action = nil
+       local action
 
        if fCurses.activeCurse == label then
          action = "co -" .. cmd .. ",?"
@@ -528,9 +537,12 @@ MultiBot.addWarlock = function(pFrame, pCombat, pNormal)
          end
        end
 
-       if not MultiBot.ActionToTarget(action, target) then return end
-       fCurses.activeCurse = desired
-       UpdateCurseIcons(fCurses.activeCurse)
+       local sent, transport = MultiBot.ActionToTarget(action, target)
+       if not sent then return end
+       if transport ~= "bridge" then
+         fCurses.activeCurse = desired
+         UpdateCurseIcons(fCurses.activeCurse)
+       end
        fCurses:Hide()
      end
    end

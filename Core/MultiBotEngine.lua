@@ -528,11 +528,11 @@ MultiBot.ActionToTarget = function(pAction, oTarget)
 
 	if(tName ~= nil and tName ~= "Unknown Entity") then
 		if(_mbRunBridgeStrategyMutation(pAction, "BOT", tName)) then
-			return true
+			return true, "bridge"
 		end
 
 		SendChatMessage(pAction, "WHISPER", nil, tName)
-		return true
+		return true, "chat"
 	end
 
 	SendChatMessage(MultiBot.L("info.target"), "SAY")

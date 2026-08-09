@@ -952,6 +952,8 @@ function OutfitUI:RequestList(botName)
     self.listButtons = self.listButtons or {}
     self.itemButtons = self.itemButtons or {}
 
+    local previousBotName = self.botName
+
     self.botName = botName
     if self.frame and self.frame.setBotName then
         self.frame:setBotName(botName)
@@ -966,6 +968,17 @@ function OutfitUI:RequestList(botName)
         if bridgeState then
             bridgeState.lastError = "OUTFIT_CAPABILITY_UNAVAILABLE"
         end
+
+        if previousBotName ~= botName then
+            self.entries = {}
+            self.selectedName = nil
+            self.pendingBot = nil
+            self.bridgeToken = nil
+            self.requestToken = (self.requestToken or 0) + 1
+            self:RenderEntryList()
+            self:RenderSelectedOutfit()
+        end
+
         self:SetStatus(outfitL("bridge_unavailable"))
         local unavailableWaitButton = getUnitWaitButton(botName)
         if unavailableWaitButton and unavailableWaitButton.waitFor == "OUTFITS" then

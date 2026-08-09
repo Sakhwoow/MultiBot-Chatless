@@ -1042,6 +1042,8 @@ local ruRUValues = {
   ["info.outfits.feedback_update"] = "Комплект «%s» обновлён.",
   ["info.outfits.feedback_created"] = "Комплект «%s» создан.",
   ["info.outfits.feedback_reset"] = "Комплект «%s» сброшен.",
+  ["info.outfits.bridge_unavailable"] = "Мост комплектов недоступен. Резервная отправка через чат не выполнялась.",
+  ["info.outfits.send_failed"] = "Не удалось отправить запрос комплекта через мост.",
 }
 
 register("ruRU", ruRUValues)

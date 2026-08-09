@@ -1041,6 +1041,8 @@ local frFRValues = {
   ["info.outfits.feedback_update"] = "Tenue « %s » mise à jour.",
   ["info.outfits.feedback_created"] = "Tenue « %s » créée.",
   ["info.outfits.feedback_reset"] = "Tenue « %s » réinitialisée.",
+  ["info.outfits.bridge_unavailable"] = "Bridge Tenues indisponible. Aucun fallback chat n'a été envoyé.",
+  ["info.outfits.send_failed"] = "La requête de tenue n'a pas pu être envoyée au bridge.",
 }
 
 register("frFR", frFRValues)

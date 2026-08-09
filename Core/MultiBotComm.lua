@@ -1088,7 +1088,7 @@ function Comm.RequestOutfits(name)
   return true
 end
 
-function Comm.RunOutfitCommand(name, commandSuffix, persist)
+function Comm.RunOutfitCommand(name, commandSuffix, persist, wasCreate)
   local state = ensureBridgeState()
   name = trim(name)
   commandSuffix = trim(commandSuffix)
@@ -1103,10 +1103,11 @@ function Comm.RunOutfitCommand(name, commandSuffix, persist)
     botNameKey = string.lower(name),
     command = commandSuffix,
     persist = persist == true,
+    wasCreate = wasCreate == true,
     startedAt = safeNow(),
   }
 
-  local persistToken = persist and "1" or "0"
+  local persistToken = persist == true and "1" or "0"
   if not Comm.Send("RUN", "OUTFIT~" .. name .. "~" .. token .. "~" .. urlEncodeField(commandSuffix) .. "~" .. persistToken) then
     state.outfitCommands[token] = nil
     return false
@@ -2631,7 +2632,7 @@ function Comm.ApplyOutfitCommandPayload(payload)
   command.result = result
 
   if MultiBot.OutfitUI and MultiBot.OutfitUI.HandleBridgeCommandResult then
-    MultiBot.OutfitUI:HandleBridgeCommandResult(command.botName, token, result, command.command, command.persist == true)
+    MultiBot.OutfitUI:HandleBridgeCommandResult(command.botName, token, result, command.command, command.wasCreate == true)
   end
 
   state.outfitCommands[token] = nil

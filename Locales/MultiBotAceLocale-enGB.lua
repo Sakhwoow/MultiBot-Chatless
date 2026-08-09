@@ -1044,6 +1044,8 @@ local enGBValues = {
   ["info.outfits.feedback_update"] = "Outfit \"%s\" updated.",
   ["info.outfits.feedback_created"] = "Outfit \"%s\" created.",
   ["info.outfits.feedback_reset"] = "Outfit \"%s\" reset.",
+  ["info.outfits.bridge_unavailable"] = "Outfit bridge unavailable. No chat fallback was sent.",
+  ["info.outfits.send_failed"] = "Outfit request could not be sent to the bridge.",
 }
 
 register("enGB", enGBValues)

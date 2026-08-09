@@ -1041,6 +1041,8 @@ local deDEValues = {
   ["info.outfits.feedback_update"] = "Outfit „%s“ aktualisiert.",
   ["info.outfits.feedback_created"] = "Outfit „%s“ erstellt.",
   ["info.outfits.feedback_reset"] = "Outfit „%s“ zurückgesetzt.",
+  ["info.outfits.bridge_unavailable"] = "Outfit-Bridge nicht verfügbar. Es wurde kein Chat-Fallback gesendet.",
+  ["info.outfits.send_failed"] = "Outfit-Anfrage konnte nicht an die Bridge gesendet werden.",
 }
 
 register("deDE", deDEValues)

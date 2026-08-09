@@ -1042,6 +1042,8 @@ local zhCNValues = {
   ["info.outfits.feedback_update"] = "配装“%s”已更新。",
   ["info.outfits.feedback_created"] = "配装“%s”已创建。",
   ["info.outfits.feedback_reset"] = "配装“%s”已重置。",
+  ["info.outfits.bridge_unavailable"] = "配装桥接不可用。未通过聊天备用通道发送。",
+  ["info.outfits.send_failed"] = "无法将配装请求发送到桥接。",
 }
 
 register("zhCN", zhCNValues)

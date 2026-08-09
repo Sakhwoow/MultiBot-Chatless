@@ -1035,6 +1035,8 @@ local ruRUValues = {
   ["formation.name.shield"] = "Щит",
   ["formation.name.far"] = "Дальнее",
   ["formation.name.unknown"] = "Неизвестно",
+  ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: команда стратегии не выполнена (%s). Резервная отправка через чат не выполнялась.",
+  ["strategy.warning.refused"] = "MultiBot: команда стратегии отклонена - %s",
 }
 
 register("ruRU", ruRUValues)

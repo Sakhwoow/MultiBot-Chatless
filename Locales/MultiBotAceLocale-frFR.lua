@@ -1034,6 +1034,8 @@ local frFRValues = {
   ["formation.name.shield"] = "Bouclier",
   ["formation.name.far"] = "Éloignée",
   ["formation.name.unknown"] = "Inconnue",
+  ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s : échec de la commande de stratégie (%s). Aucun fallback chat n'a été envoyé.",
+  ["strategy.warning.refused"] = "MultiBot : commande de stratégie refusée - %s",
 }
 
 register("frFR", frFRValues)

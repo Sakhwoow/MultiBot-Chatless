@@ -1026,6 +1026,8 @@ local koKRValues = {
   ["formation.name.shield"] = "방패",
   ["formation.name.far"] = "원거리",
   ["formation.name.unknown"] = "알 수 없음",
+  ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: 전략 명령에 실패했습니다 (%s). 채팅 대체 전송을 사용하지 않았습니다.",
+  ["strategy.warning.refused"] = "MultiBot: 전략 명령이 거부되었습니다 - %s",
 }
 
 register("koKR", koKRValues)

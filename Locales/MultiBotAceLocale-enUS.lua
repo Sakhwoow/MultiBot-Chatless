@@ -1037,6 +1037,8 @@ local enUSValues = {
   ["formation.name.shield"] = "Shield",
   ["formation.name.far"] = "Far",
   ["formation.name.unknown"] = "Unknown",
+  ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: strategy command failed (%s). No chat fallback was sent.",
+  ["strategy.warning.refused"] = "MultiBot: strategy command refused - %s",
 }
 
 register("enUS", enUSValues, true)

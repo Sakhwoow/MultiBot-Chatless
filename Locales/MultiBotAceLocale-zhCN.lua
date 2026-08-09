@@ -1035,6 +1035,8 @@ local zhCNValues = {
   ["formation.name.shield"] = "盾牌",
   ["formation.name.far"] = "远距离",
   ["formation.name.unknown"] = "未知",
+  ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s：策略命令失败（%s）。未通过聊天备用通道发送。",
+  ["strategy.warning.refused"] = "MultiBot：策略命令被拒绝 - %s",
 }
 
 register("zhCN", zhCNValues)

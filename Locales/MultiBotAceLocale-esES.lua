@@ -1035,6 +1035,8 @@ local esESValues = {
   ["formation.name.shield"] = "Escudo",
   ["formation.name.far"] = "Lejana",
   ["formation.name.unknown"] = "Desconocida",
+  ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: fallo del comando de estrategia (%s). No se envió ningún fallback por chat.",
+  ["strategy.warning.refused"] = "MultiBot: comando de estrategia rechazado - %s",
 }
 
 register("esES", esESValues)

@@ -529,9 +529,7 @@ end
 local function _mbWarnStrategyMutationBlocked(commandScope, target, reason)
 	local subject = _mbStrategySubject(commandScope, target)
 	local detail = tostring(reason or "STRATEGY_REJECTED")
-	local message = "|cffff4444[MultiBot]|r " .. subject
-		.. " : echec de la commande de strategie (" .. detail
-		.. "). Aucun fallback chat n'a ete envoye."
+	local message = string.format(MultiBot.L("strategy.warning.blocked"), subject, detail)
 
 	if(DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage) then
 		DEFAULT_CHAT_FRAME:AddMessage(message)
@@ -540,7 +538,7 @@ local function _mbWarnStrategyMutationBlocked(commandScope, target, reason)
 	end
 
 	if(UIErrorsFrame and UIErrorsFrame.AddMessage) then
-		UIErrorsFrame:AddMessage("MultiBot : commande de strategie refusee - " .. subject, 1, 0.25, 0.25, 1)
+		UIErrorsFrame:AddMessage(string.format(MultiBot.L("strategy.warning.refused"), subject), 1, 0.25, 0.25, 1)
 	end
 end
 

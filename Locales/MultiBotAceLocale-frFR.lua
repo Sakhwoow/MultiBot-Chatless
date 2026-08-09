@@ -1036,6 +1036,11 @@ local frFRValues = {
   ["formation.name.unknown"] = "Inconnue",
   ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s : échec de la commande de stratégie (%s). Aucun fallback chat n'a été envoyé.",
   ["strategy.warning.refused"] = "MultiBot : commande de stratégie refusée - %s",
+  ["info.outfits.feedback_equip"] = "Tenue « %s » équipée.",
+  ["info.outfits.feedback_replace"] = "Tenue « %s » remplacée.",
+  ["info.outfits.feedback_update"] = "Tenue « %s » mise à jour.",
+  ["info.outfits.feedback_created"] = "Tenue « %s » créée.",
+  ["info.outfits.feedback_reset"] = "Tenue « %s » réinitialisée.",
 }
 
 register("frFR", frFRValues)

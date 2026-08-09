@@ -983,12 +983,29 @@ function OutfitUI:RequestList(botName)
         end)
     end
 
-    if MultiBot.Comm and MultiBot.Comm.RequestOutfits and MultiBot.Comm.RequestOutfits(botName) then
+    local bridgeState = MultiBot.bridge
+    local bridgeOutfitCapable = bridgeState
+        and bridgeState.connected == true
+        and bridgeState.outfitCapable == true
+
+    if bridgeOutfitCapable then
+        if MultiBot.Comm and MultiBot.Comm.RequestOutfits and MultiBot.Comm.RequestOutfits(botName) then
+            return true
+        end
+
+        bridgeState.lastError = "OUTFIT_SEND_FAILED"
+        return false
+    end
+
+    if MultiBot.allowLegacyChatFallback == true then
+        SendChatMessage("outfit ?", "WHISPER", nil, botName)
         return true
     end
 
-    SendChatMessage("outfit ?", "WHISPER", nil, botName)
-    return true
+    if bridgeState then
+        bridgeState.lastError = "OUTFIT_CAPABILITY_UNAVAILABLE"
+    end
+    return false
 end
 
 function OutfitUI:HandleBridgeBegin(botName, token)
@@ -1054,7 +1071,42 @@ function OutfitUI:HandleBridgeEnd(botName, token)
     return true
 end
 
-function OutfitUI:HandleBridgeCommandResult(botName, token, result)
+local function showOutfitCommandFeedback(commandSuffix, wasCreate)
+    if type(commandSuffix) ~= "string" then
+        return
+    end
+
+    local cleaned = trim(commandSuffix)
+    local outfitName, action = string.match(cleaned, "^(.-)%s+(%S+)%s*$")
+    if not outfitName or outfitName == "" or not action then
+        return
+    end
+
+    action = string.lower(action)
+    local key = nil
+    if action == "equip" then
+        key = "feedback_equip"
+    elseif action == "replace" then
+        key = "feedback_replace"
+    elseif action == "update" then
+        key = wasCreate and "feedback_created" or "feedback_update"
+    elseif action == "reset" then
+        key = "feedback_reset"
+    end
+
+    if not key then
+        return
+    end
+
+    local message = string.format(outfitL(key), outfitName)
+    if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
+        DEFAULT_CHAT_FRAME:AddMessage(message)
+    elseif type(print) == "function" then
+        print(message)
+    end
+end
+
+function OutfitUI:HandleBridgeCommandResult(botName, token, result, commandSuffix, wasCreate)
     if not botName or botName == "" then
         return false
     end
@@ -1066,6 +1118,7 @@ function OutfitUI:HandleBridgeCommandResult(botName, token, result)
     end
 
     self:SetStatus(outfitL("loaded"))
+    showOutfitCommandFeedback(commandSuffix, wasCreate == true)
 
     local refreshDelay = OUTFIT_UPDATE_REFRESH_DELAY
     if MultiBot.TimerAfter then
@@ -1144,10 +1197,27 @@ function OutfitUI:RunCommand(commandSuffix, statusText, refreshDelay, persistDel
         return false
     end
 
-    if MultiBot.Comm and MultiBot.Comm.RunOutfitCommand and MultiBot.Comm.RunOutfitCommand(botName, commandSuffix, type(persistDelay) == "number" and persistDelay >= 0) then
-        self:BeginCommandLock(botName)
-        self:SetStatus(statusText)
-        return true
+    local bridgeState = MultiBot.bridge
+    local bridgeOutfitCapable = bridgeState
+        and bridgeState.connected == true
+        and bridgeState.outfitCapable == true
+
+    if bridgeOutfitCapable then
+        if MultiBot.Comm and MultiBot.Comm.RunOutfitCommand and MultiBot.Comm.RunOutfitCommand(botName, commandSuffix, type(persistDelay) == "number" and persistDelay >= 0) then
+            self:BeginCommandLock(botName)
+            self:SetStatus(statusText)
+            return true
+        end
+
+        bridgeState.lastError = "OUTFIT_SEND_FAILED"
+        return false
+    end
+
+    if MultiBot.allowLegacyChatFallback ~= true then
+        if bridgeState then
+            bridgeState.lastError = "OUTFIT_CAPABILITY_UNAVAILABLE"
+        end
+        return false
     end
 
     -- print("OutfitUI DEBUG: sending -> 'outfit " .. tostring(commandSuffix) .. "' to " .. tostring(botName))

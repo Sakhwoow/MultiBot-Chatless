@@ -13,6 +13,7 @@ Comm.version = "1"
 
 local STATE_FRAMING_CAPABILITY = "STATE_FRAMING_V1"
 local STRATEGY_MUTATION_CAPABILITY = "STRATEGY_MUTATION_V1"
+local OUTFIT_CAPABILITY = "OUTFIT_V1"
 local STATE_TIMEOUT_SECONDS = 5.0
 local STATES_TIMEOUT_SECONDS = 15.0
 local STRATEGY_MUTATION_TIMEOUT_SECONDS = 5.0
@@ -209,6 +210,7 @@ local function ensureBridgeState()
   state.stateGlobalLatestToken = state.stateGlobalLatestToken or nil
   state.stateFramingCapable = state.stateFramingCapable or false
   state.strategyMutationCapable = state.strategyMutationCapable or false
+  state.outfitCapable = state.outfitCapable or false
   state.strategyMutationSeq = state.strategyMutationSeq or 0
   state.strategyMutationCommands = state.strategyMutationCommands or {}
   state.weaponEnchantDebugSeq = state.weaponEnchantDebugSeq or 0
@@ -1064,7 +1066,7 @@ end
 function Comm.RequestOutfits(name)
   local state = ensureBridgeState()
   name = trim(name)
-  if name == "" or not state.connected then
+  if name == "" or not state.connected or state.outfitCapable ~= true then
     return false
   end
 
@@ -1090,7 +1092,7 @@ function Comm.RunOutfitCommand(name, commandSuffix, persist)
   local state = ensureBridgeState()
   name = trim(name)
   commandSuffix = trim(commandSuffix)
-  if name == "" or commandSuffix == "" or not state.connected then
+  if name == "" or commandSuffix == "" or not state.connected or state.outfitCapable ~= true then
     return false
   end
 
@@ -1100,6 +1102,7 @@ function Comm.RunOutfitCommand(name, commandSuffix, persist)
     botName = name,
     botNameKey = string.lower(name),
     command = commandSuffix,
+    persist = persist == true,
     startedAt = safeNow(),
   }
 
@@ -1557,6 +1560,7 @@ function Comm.MarkDisconnected(reason)
   state.formationCommands = {}
   state.formationQueryActive = nil
   state.strategyMutationCapable = false
+  state.outfitCapable = false
   state.stateFramingCapable = false
 
   local pendingTokens = {}
@@ -2627,7 +2631,7 @@ function Comm.ApplyOutfitCommandPayload(payload)
   command.result = result
 
   if MultiBot.OutfitUI and MultiBot.OutfitUI.HandleBridgeCommandResult then
-    MultiBot.OutfitUI:HandleBridgeCommandResult(command.botName, token, result)
+    MultiBot.OutfitUI:HandleBridgeCommandResult(command.botName, token, result, command.command, command.persist == true)
   end
 
   state.outfitCommands[token] = nil
@@ -3228,12 +3232,15 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
   if opcode == "CAPS" then
     state.stateFramingCapable = false
     state.strategyMutationCapable = false
+    state.outfitCapable = false
     for capability in string.gmatch(payload or "", "([^,]+)") do
       capability = trim(capability)
       if capability == STATE_FRAMING_CAPABILITY then
         state.stateFramingCapable = true
       elseif capability == STRATEGY_MUTATION_CAPABILITY then
         state.strategyMutationCapable = true
+      elseif capability == OUTFIT_CAPABILITY then
+        state.outfitCapable = true
       end
     end
     debugPrint("ADDON:RX", "CAPS", payload or "")
@@ -4434,6 +4441,7 @@ function Comm.OnPlayerEnteringWorld()
   state.stateGlobalLatestToken = nil
   state.stateFramingCapable = false
   state.strategyMutationCapable = false
+  state.outfitCapable = false
   state.strategyMutationCommands = {}
   state.details = {}
   state.stats = {}

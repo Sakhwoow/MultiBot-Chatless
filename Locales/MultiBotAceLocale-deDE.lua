@@ -1036,6 +1036,11 @@ local deDEValues = {
   ["formation.name.unknown"] = "Unbekannt",
   ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: Strategiebefehl fehlgeschlagen (%s). Es wurde kein Fallback über den Chat gesendet.",
   ["strategy.warning.refused"] = "MultiBot: Strategiebefehl abgelehnt - %s",
+  ["info.outfits.feedback_equip"] = "Outfit „%s“ ausgerüstet.",
+  ["info.outfits.feedback_replace"] = "Outfit „%s“ ersetzt.",
+  ["info.outfits.feedback_update"] = "Outfit „%s“ aktualisiert.",
+  ["info.outfits.feedback_created"] = "Outfit „%s“ erstellt.",
+  ["info.outfits.feedback_reset"] = "Outfit „%s“ zurückgesetzt.",
 }
 
 register("deDE", deDEValues)

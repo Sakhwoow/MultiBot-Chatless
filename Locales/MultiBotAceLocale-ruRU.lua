@@ -1037,6 +1037,11 @@ local ruRUValues = {
   ["formation.name.unknown"] = "Неизвестно",
   ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: команда стратегии не выполнена (%s). Резервная отправка через чат не выполнялась.",
   ["strategy.warning.refused"] = "MultiBot: команда стратегии отклонена - %s",
+  ["info.outfits.feedback_equip"] = "Комплект «%s» экипирован.",
+  ["info.outfits.feedback_replace"] = "Комплект «%s» заменён.",
+  ["info.outfits.feedback_update"] = "Комплект «%s» обновлён.",
+  ["info.outfits.feedback_created"] = "Комплект «%s» создан.",
+  ["info.outfits.feedback_reset"] = "Комплект «%s» сброшен.",
 }
 
 register("ruRU", ruRUValues)

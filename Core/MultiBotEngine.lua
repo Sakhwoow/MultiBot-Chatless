@@ -489,6 +489,12 @@ local function _mbParseStrategyMutation(action)
 	return scope, changes
 end
 
+-- MB_P1_STRATEGY_NO_SILENT_CHAT_FALLBACK_V1_START
+local MB_STRATEGY_ROUTE_NOT_STRATEGY = "NOT_STRATEGY"
+local MB_STRATEGY_ROUTE_BRIDGE = "BRIDGE"
+local MB_STRATEGY_ROUTE_LEGACY = "LEGACY"
+local MB_STRATEGY_ROUTE_BLOCKED = "BLOCKED"
+
 local function _mbCanUseBridgeStrategyMutation()
 	return MultiBot.bridge
 		and MultiBot.bridge.connected == true
@@ -497,38 +503,115 @@ local function _mbCanUseBridgeStrategyMutation()
 		and type(MultiBot.Comm.RunStrategyCommand) == "function"
 end
 
-local function _mbRunBridgeStrategyMutation(action, commandScope, target)
-	if(not _mbCanUseBridgeStrategyMutation()) then return false end
+local function _mbStrategyBridgeUnavailableReason()
+	if(not MultiBot.bridge) then return "STRATEGY_BRIDGE_UNAVAILABLE" end
+	if(MultiBot.bridge.connected ~= true) then return "STRATEGY_NOT_CONNECTED" end
+	if(MultiBot.bridge.strategyMutationCapable ~= true) then return "STRATEGY_CAPABILITY_UNAVAILABLE" end
+	if(not MultiBot.Comm or type(MultiBot.Comm.RunStrategyCommand) ~= "function") then
+		return "STRATEGY_CLIENT_UNAVAILABLE"
+	end
+	return "STRATEGY_UNAVAILABLE"
+end
 
-	local mutationScope, changes = _mbParseStrategyMutation(action)
-	if(not mutationScope) then return false end
+local function _mbStrategyLastError(fallback)
+	local reason = MultiBot.bridge and MultiBot.bridge.lastError
+	if(type(reason) == "string" and reason ~= "") then return reason end
+	return fallback or "STRATEGY_REJECTED"
+end
+
+local function _mbStrategySubject(commandScope, target)
+	if(type(target) == "string" and target ~= "") then return target end
+	commandScope = string.lower(commandScope or "group")
+	if(commandScope == "") then commandScope = "group" end
+	return commandScope
+end
+
+local function _mbWarnStrategyMutationBlocked(commandScope, target, reason)
+	local subject = _mbStrategySubject(commandScope, target)
+	local detail = tostring(reason or "STRATEGY_REJECTED")
+	local message = string.format(MultiBot.L("strategy.warning.blocked"), subject, detail)
+
+	if(DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage) then
+		DEFAULT_CHAT_FRAME:AddMessage(message)
+	elseif(type(print) == "function") then
+		print(message)
+	end
+
+	if(UIErrorsFrame and UIErrorsFrame.AddMessage) then
+		UIErrorsFrame:AddMessage(string.format(MultiBot.L("strategy.warning.refused"), subject), 1, 0.25, 0.25, 1)
+	end
+end
+
+local function _mbRefreshStrategyState(commandScope, target)
+	if(not MultiBot.bridge or MultiBot.bridge.connected ~= true or not MultiBot.Comm) then return end
 
 	commandScope = string.upper(commandScope or "BOT")
 	target = target or ""
-	local stateScope = mutationScope == "nc" and "N" or "C"
 
-	local token = MultiBot.Comm.RunStrategyCommand(commandScope, target, stateScope, changes, function(result)
-		if(type(result) ~= "table") then return end
-		if(not MultiBot.bridge or MultiBot.bridge.connected ~= true) then return end
-
-		if(commandScope == "BOT") then
-			if(MultiBot.Comm and MultiBot.Comm.RequestState) then
-				MultiBot.Comm.RequestState(target)
-			end
-		elseif(MultiBot.Comm and MultiBot.Comm.RequestStates) then
-			MultiBot.Comm.RequestStates()
+	if(commandScope == "BOT") then
+		if(target ~= "" and type(MultiBot.Comm.RequestState) == "function") then
+			MultiBot.Comm.RequestState(target)
 		end
+	elseif(type(MultiBot.Comm.RequestStates) == "function") then
+		MultiBot.Comm.RequestStates()
+	end
+end
+
+local function _mbRouteStrategyMutation(action, commandScope, target)
+	local mutationScope, changes = _mbParseStrategyMutation(action)
+	if(not mutationScope) then return MB_STRATEGY_ROUTE_NOT_STRATEGY end
+
+	commandScope = string.upper(commandScope or "BOT")
+	target = target or ""
+
+	if(not _mbCanUseBridgeStrategyMutation()) then
+		if(MultiBot.allowLegacyChatFallback == true) then
+			return MB_STRATEGY_ROUTE_LEGACY
+		end
+
+		_mbWarnStrategyMutationBlocked(commandScope, target, _mbStrategyBridgeUnavailableReason())
+		_mbRefreshStrategyState(commandScope, target)
+		return MB_STRATEGY_ROUTE_BLOCKED
+	end
+
+	local stateScope = mutationScope == "nc" and "N" or "C"
+	local token = MultiBot.Comm.RunStrategyCommand(commandScope, target, stateScope, changes, function(result)
+		if(type(result) ~= "table") then
+			_mbWarnStrategyMutationBlocked(commandScope, target, "STRATEGY_INVALID_RESULT")
+			_mbRefreshStrategyState(commandScope, target)
+			return
+		end
+
+		if(result.status ~= "ok") then
+			local reason = result.reason
+			if(type(reason) ~= "string" or reason == "") then
+				reason = result.status or "STRATEGY_REJECTED"
+			end
+			_mbWarnStrategyMutationBlocked(commandScope, target, reason)
+		end
+
+		_mbRefreshStrategyState(commandScope, target)
 	end)
 
-	return token ~= false and token ~= nil
+	if(token ~= false and token ~= nil) then
+		return MB_STRATEGY_ROUTE_BRIDGE
+	end
+
+	_mbWarnStrategyMutationBlocked(commandScope, target, _mbStrategyLastError("STRATEGY_SEND_FAILED"))
+	_mbRefreshStrategyState(commandScope, target)
+	return MB_STRATEGY_ROUTE_BLOCKED
 end
 
 MultiBot.ActionToTarget = function(pAction, oTarget)
 	local tName = MultiBot.IF(oTarget == nil, UnitName("target"), oTarget)
 
 	if(tName ~= nil and tName ~= "Unknown Entity") then
-		if(_mbRunBridgeStrategyMutation(pAction, "BOT", tName)) then
+		local route = _mbRouteStrategyMutation(pAction, "BOT", tName)
+		if(route == MB_STRATEGY_ROUTE_BRIDGE) then
 			return true, "bridge"
+		end
+		if(route == MB_STRATEGY_ROUTE_BLOCKED) then
+			return false, "blocked"
 		end
 
 		SendChatMessage(pAction, "WHISPER", nil, tName)
@@ -547,16 +630,24 @@ MultiBot.ActionToTargetOrGroup = function(pAction)
 	end
 
 	if(GetNumRaidMembers() > 5) then
-		if(_mbRunBridgeStrategyMutation(pAction, "RAID", "")) then
+		local route = _mbRouteStrategyMutation(pAction, "RAID", "")
+		if(route == MB_STRATEGY_ROUTE_BRIDGE) then
 			return true
+		end
+		if(route == MB_STRATEGY_ROUTE_BLOCKED) then
+			return false
 		end
 		SendChatMessage(pAction, "RAID")
 		return true
 	end
 
 	if(GetNumPartyMembers() > 0) then
-		if(_mbRunBridgeStrategyMutation(pAction, "PARTY", "")) then
+		local route = _mbRouteStrategyMutation(pAction, "PARTY", "")
+		if(route == MB_STRATEGY_ROUTE_BRIDGE) then
 			return true
+		end
+		if(route == MB_STRATEGY_ROUTE_BLOCKED) then
+			return false
 		end
 		SendChatMessage(pAction, "PARTY")
 		return true
@@ -568,16 +659,24 @@ end
 
 MultiBot.ActionToGroup = function(pAction)
 	if(GetNumRaidMembers() > 5) then
-		if(_mbRunBridgeStrategyMutation(pAction, "RAID", "")) then
+		local route = _mbRouteStrategyMutation(pAction, "RAID", "")
+		if(route == MB_STRATEGY_ROUTE_BRIDGE) then
 			return true
+		end
+		if(route == MB_STRATEGY_ROUTE_BLOCKED) then
+			return false
 		end
 		SendChatMessage(pAction, "RAID")
 		return true
 	end
 
 	if(GetNumPartyMembers() > 0) then
-		if(_mbRunBridgeStrategyMutation(pAction, "PARTY", "")) then
+		local route = _mbRouteStrategyMutation(pAction, "PARTY", "")
+		if(route == MB_STRATEGY_ROUTE_BRIDGE) then
 			return true
+		end
+		if(route == MB_STRATEGY_ROUTE_BLOCKED) then
+			return false
 		end
 		SendChatMessage(pAction, "PARTY")
 		return true
@@ -586,6 +685,7 @@ MultiBot.ActionToGroup = function(pAction)
 	SendChatMessage(MultiBot.L("info.group"), "SAY")
 	return false
 end
+-- MB_P1_STRATEGY_NO_SILENT_CHAT_FALLBACK_V1_END
 
 MultiBot.SelectToTarget = function(pParent, pIndex, pTexture, pAction, oTarget)
 	if(MultiBot.ActionToTarget(pAction, oTarget)) then
@@ -925,14 +1025,30 @@ MultiBot.OnOffActionToTarget = function(pButton, pOn, pOff, pTarget)
 	local action = wasEnabled and pOff or pOn
 	local mutationScope = _mbParseStrategyMutation(action)
 
-	if(mutationScope and _mbRunBridgeStrategyMutation(action, "BOT", pTarget)) then
-		-- Conserve la sémantique historique du retour pour tous les appelants co/nc.
-		-- L'état visuel définitif reste reconstruit depuis l'ACK puis STATE.
-		return not wasEnabled
-	end
+	if(mutationScope) then
+		local route = _mbRouteStrategyMutation(action, "BOT", pTarget)
+		if(route == MB_STRATEGY_ROUTE_BRIDGE) then
+			-- L'etat visuel definitif reste reconstruit depuis l'ACK puis STATE.
+			return not wasEnabled
+		end
+		if(route == MB_STRATEGY_ROUTE_BLOCKED) then
+			-- Aucun changement optimiste si le bridge refuse ou ne peut pas envoyer.
+			return wasEnabled
+		end
 
-	local unitButton = _mbGetStrategyUnitButton(pTarget)
-	if(mutationScope and unitButton) then unitButton.waitFor = string.upper(mutationScope) end
+		local unitButton = _mbGetStrategyUnitButton(pTarget)
+		if(unitButton) then unitButton.waitFor = string.upper(mutationScope) end
+
+		-- Seul le mode legacy explicitement autorise atteint ce transport chat.
+		SendChatMessage(action, "WHISPER", nil, pTarget)
+		if(wasEnabled) then
+			pButton.setDisable()
+			return false
+		else
+			pButton.setEnable()
+			return true
+		end
+	end
 
 	if(wasEnabled) then
 		MultiBot.ActionToTarget(pOff, pTarget)

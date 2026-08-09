@@ -1034,6 +1034,8 @@ local deDEValues = {
   ["formation.name.shield"] = "Schild",
   ["formation.name.far"] = "Entfernt",
   ["formation.name.unknown"] = "Unbekannt",
+  ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: Strategiebefehl fehlgeschlagen (%s). Es wurde kein Fallback über den Chat gesendet.",
+  ["strategy.warning.refused"] = "MultiBot: Strategiebefehl abgelehnt - %s",
 }
 
 register("deDE", deDEValues)

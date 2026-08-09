@@ -192,7 +192,8 @@ MultiBot.addShaman = function(pFrame, pCombat, pNormal)
 		end
 	end
 
-	local function dispatchShamanPlaybookCommands(target, commands, bridgeSync, sequenceKey, sequence)
+-- MB_P1A_SHAMAN_PLAYBOOK_BLOCKED_STATE_V1_START
+	local function dispatchShamanPlaybookCommands(target, commands, bridgeSync, sequenceKey, sequence, onAccepted)
 		local function sendCommand(index)
 			if(not isShamanPlaybookSequenceCurrent(sequenceKey, sequence)) then return end
 
@@ -205,13 +206,16 @@ MultiBot.addShaman = function(pFrame, pCombat, pNormal)
 					sendCommand(index + 1)
 				end)
 			else
+				if(type(onAccepted) == "function" and isShamanPlaybookSequenceCurrent(sequenceKey, sequence)) then
+					onAccepted()
+				end
 				requestShamanCombatState(target, bridgeSync, sequenceKey, sequence)
 			end
 		end
 
 		sendCommand(1)
 	end
-
+-- MB_P1A_SHAMAN_PLAYBOOK_BLOCKED_STATE_V1_END
 	local function selectExclusiveShamanSpec(pButton, specKey, pOtherOne, pOtherTwo)
 		local defaults = shamanSpecDefaults[specKey]
 		local target = pButton.getName()
@@ -230,17 +234,16 @@ MultiBot.addShaman = function(pFrame, pCombat, pNormal)
 
 		local sequenceKey, sequence = beginShamanPlaybookSequence(target)
 
-		-- The visible Playbook state and QuickShaman defaults are updated on the
-		-- first click. The delayed real-state refresh may only confirm this state;
-		-- it must not race the mutation commands and restore the previous spec.
-		pButton.setEnable()
-		pButton.getButton(pOtherOne).setDisable()
-		pButton.getButton(pOtherTwo).setDisable()
-		applyQuickShamanSpecDefaults(target, specKey)
-
-		dispatchShamanPlaybookCommands(target, commands, bridgeSync, sequenceKey, sequence)
-	end
-	-- HOTFIX_MULTIBOT_SHAMAN_PLAYBOOK_SYNC_V2E2C_END --
+		-- Commit the visible Playbook state and Quick Shaman persisted defaults only
+		-- after every mutation in this sequence has been accepted for delivery.
+		dispatchShamanPlaybookCommands(target, commands, bridgeSync, sequenceKey, sequence, function()
+			if(not isShamanPlaybookSequenceCurrent(sequenceKey, sequence)) then return end
+			pButton.setEnable()
+			pButton.getButton(pOtherOne).setDisable()
+			pButton.getButton(pOtherTwo).setDisable()
+			applyQuickShamanSpecDefaults(target, specKey)
+		end)
+	end	-- HOTFIX_MULTIBOT_SHAMAN_PLAYBOOK_SYNC_V2E2C_END --
 
 	playbookFrame.addButton(
 		"Aoe", 0, 0, "spell_nature_lightningoverload",

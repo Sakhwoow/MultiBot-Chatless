@@ -1307,9 +1307,11 @@ function OutfitUI:CreateFromCurrent()
             return
         end
 
+        local wasCreate = self:FindEntry(outfitName) == nil
         self.selectedName = outfitName
         setLastSelected(self.botName or "", outfitName)
-        self:RunCommand(outfitName .. " update", outfitL("created"), 0.35, OUTFIT_PERSIST_FLUSH_DELAY, true, true)
+        local statusText = wasCreate and outfitL("created") or outfitL("updated")
+        self:RunCommand(outfitName .. " update", statusText, 0.35, OUTFIT_PERSIST_FLUSH_DELAY, true, wasCreate)
     end, "", anchorFrame)
 end
 

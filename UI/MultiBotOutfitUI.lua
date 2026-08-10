@@ -1024,8 +1024,10 @@ function OutfitUI:RequestList(botName)
         bridgeState.lastError = "OUTFIT_SEND_FAILED"
         self.requestToken = self.requestToken + 1
         self.pendingBot = nil
-        self.entries = previousEntries
-        self.selectedName = previousSelectedName
+        if previousBotName == botName then
+            self.entries = previousEntries
+            self.selectedName = previousSelectedName
+        end
         self:RenderEntryList()
         self:RenderSelectedOutfit()
         self:SetStatus(outfitL("send_failed"))

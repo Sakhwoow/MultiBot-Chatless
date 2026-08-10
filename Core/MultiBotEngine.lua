@@ -2444,6 +2444,13 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 		end
 	end
 
+	local function neutralizeCurrentInventoryView()
+		local inventory = MultiBot.inventory
+		if inventory and inventory.name == botName and type(inventory.beginPayload) == "function" then
+			inventory:beginPayload(botName)
+		end
+	end
+
 	local function doRefresh()
 		local waitButton = getInventoryUnitButton(botName)
 		local bridge = MultiBot.bridge or nil
@@ -2464,10 +2471,7 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 				if activeInventoryRequest
 						and activeInventoryRequest.botNameKey == string.lower(botName)
 						and activeInventoryRequest.begun ~= true then
-					local inventory = MultiBot.inventory
-					if inventory and inventory.name == botName and type(inventory.beginPayload) == "function" then
-						inventory:beginPayload(botName)
-					end
+					neutralizeCurrentInventoryView()
 				end
 
 				clearWaitState(waitButton)
@@ -2477,6 +2481,7 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 			if bridge then
 				bridge.lastError = "INVENTORY_SEND_FAILED"
 			end
+			neutralizeCurrentInventoryView()
 			clearWaitState(waitButton)
 			return false
 		end
@@ -2485,6 +2490,7 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 			if bridge then
 				bridge.lastError = "INVENTORY_CAPABILITY_UNAVAILABLE"
 			end
+			neutralizeCurrentInventoryView()
 			clearWaitState(waitButton)
 			return false
 		end
@@ -2493,6 +2499,7 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 			if bridge then
 				bridge.lastError = "INVENTORY_LEGACY_NO_BUTTON"
 			end
+			neutralizeCurrentInventoryView()
 			return false
 		end
 

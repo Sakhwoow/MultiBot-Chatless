@@ -2425,9 +2425,11 @@ local function scheduleInventoryRefresh(delay, callback)
 end
 
 -- MULTIBOT:INVENTORY REFRESH --
--- Rafraîchit l’inventaire d’un bot en bridge-first.
--- Le fallback chat legacy est désactivé par défaut ; l’activer explicitement avec
--- MultiBot.allowLegacyChatFallback = true pendant un diagnostic legacy.
+-- P2B policy:
+--   bridge capable + send success  -> BRIDGE only
+--   bridge capable + send failure  -> BLOCKED, never chat
+--   capability unavailable + legacy fallback enabled -> LEGACY
+--   capability unavailable + fallback disabled       -> BLOCKED
 MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 	botName = botName or (MultiBot.inventory and MultiBot.inventory.name) or ""
 	if not botName or botName == "" then
@@ -2436,33 +2438,81 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 
 	options = options or {}
 
+	local function clearWaitState(waitButton)
+		if waitButton and (waitButton.waitFor == "INVENTORY" or waitButton.waitFor == "ITEM" or waitButton.waitFor == "LOOT") then
+			waitButton.waitFor = ""
+		end
+	end
+
+	local function neutralizeCurrentInventoryView()
+		local inventory = MultiBot.inventory
+		if inventory and inventory.name == botName and type(inventory.beginPayload) == "function" then
+			inventory:beginPayload(botName)
+		end
+	end
+
 	local function doRefresh()
 		local waitButton = getInventoryUnitButton(botName)
 		local bridge = MultiBot.bridge or nil
 		local comm = MultiBot.Comm or nil
-		local bridgeConnected = bridge and bridge.connected
+		local bridgeConnected = bridge and bridge.connected == true
+		local bridgeInventoryCapable = bridgeConnected and bridge.inventoryCapable == true
 
-		if bridgeConnected and comm and comm.RequestInventory and comm.RequestInventory(botName) then
-			if waitButton and (waitButton.waitFor == "INVENTORY" or waitButton.waitFor == "ITEM" or waitButton.waitFor == "LOOT") then
-				waitButton.waitFor = ""
+		if bridgeInventoryCapable then
+			if comm and type(comm.RequestInventory) == "function" and comm.RequestInventory(botName) then
+				if bridge then
+					bridge.lastError = nil
+				end
+
+				-- P2B review fix v2: INV_* can be processed reentrantly before
+				-- RequestInventory returns. Neutralize stale data only while the
+				-- same request is still active and INV_BEGIN has not already run.
+				local activeInventoryRequest = bridge and bridge.inventoryActive or nil
+				if activeInventoryRequest
+						and activeInventoryRequest.botNameKey == string.lower(botName)
+						and activeInventoryRequest.begun ~= true then
+					neutralizeCurrentInventoryView()
+				end
+
+				clearWaitState(waitButton)
+				return true
 			end
-			return true
-		end
 
-		if bridgeConnected and options.noChatFallbackWhenBridgeConnected then
+			if bridge then
+				bridge.lastError = "INVENTORY_SEND_FAILED"
+			end
+			neutralizeCurrentInventoryView()
+			clearWaitState(waitButton)
 			return false
 		end
 
 		if options.bridgeOnly or MultiBot.allowLegacyChatFallback ~= true then
+			if bridge then
+				bridge.lastError = "INVENTORY_CAPABILITY_UNAVAILABLE"
+			end
+			neutralizeCurrentInventoryView()
+			clearWaitState(waitButton)
 			return false
 		end
 
 		if not waitButton then
+			if bridge then
+				bridge.lastError = "INVENTORY_LEGACY_NO_BUTTON"
+			end
+			neutralizeCurrentInventoryView()
 			return false
+		end
+
+		local inventory = MultiBot.inventory
+		if inventory and inventory.beginPayload then
+			inventory:beginPayload(botName)
 		end
 
 		waitButton.waitFor = "INVENTORY"
 		SendChatMessage("items", "WHISPER", nil, botName)
+		if bridge then
+			bridge.lastError = nil
+		end
 		return true
 	end
 
@@ -2480,10 +2530,12 @@ MultiBot.RequestInventoryPostActionRefresh = function(botName, firstDelay, secon
 	end
 
 	options = options or {}
-	local bridgeConnected = MultiBot.bridge and MultiBot.bridge.connected
+	local bridgeInventoryCapable = MultiBot.bridge
+		and MultiBot.bridge.connected == true
+		and MultiBot.bridge.inventoryCapable == true
 	local requested = MultiBot.RequestInventoryRefresh(botName, firstDelay or 0.45, options)
 
-	if requested and bridgeConnected and type(secondDelay) == "number" and secondDelay > 0 then
+	if requested and bridgeInventoryCapable and type(secondDelay) == "number" and secondDelay > 0 then
 		MultiBot.RequestInventoryRefresh(botName, secondDelay, options)
 	end
 

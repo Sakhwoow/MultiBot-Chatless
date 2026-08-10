@@ -818,25 +818,11 @@ local function resetInventoryViewState()
 end
 
 local function requestInventoryForBot(botName)
-    if botName and botName ~= "" and MultiBot.RequestInventoryRefresh and MultiBot.RequestInventoryRefresh(botName) then
-        return true
-    end
-
-    if MultiBot.allowLegacyChatFallback ~= true then
+    if not botName or botName == "" or not MultiBot.RequestInventoryRefresh then
         return false
     end
 
-    local waitButton = getInventoryWaitButton(botName)
-    if waitButton then
-        waitButton.waitFor = "INVENTORY"
-    end
-
-    if botName and botName ~= "" then
-        SendChatMessage("items", "WHISPER", nil, botName)
-        return true
-    end
-
-    return false
+    return MultiBot.RequestInventoryRefresh(botName)
 end
 
 MultiBot.RequestBotInventory = function(botName)
@@ -853,8 +839,7 @@ MultiBot.RequestBotInventory = function(botName)
         return inventory:requestBotInventory(botName)
     end
 
-    requestInventoryForBot(botName)
-    return true
+    return requestInventoryForBot(botName)
 end
 
 local function closeInventoryWindow()
@@ -911,14 +896,27 @@ local function prepareInventoryForBot(botName)
         return false
     end
 
+    local inventory = MultiBot and MultiBot.inventory or nil
+    local previousBotName = inventory and inventory.name or ""
+
     disableOtherInventoryButtons(botName)
     setInventoryBotName(botName)
     openInventoryWindow()
     openInspectForInventoryBot(botName)
 
-    local inventory = MultiBot and MultiBot.inventory or nil
-    if inventory and inventory.beginPayload then
-        inventory:beginPayload(botName)
+    if inventory and previousBotName ~= botName then
+        inventory.pendingLootBot = nil
+        if inventory.resetItems then
+            inventory:resetItems()
+        end
+        inventory.summary = {
+            bagUsed = nil,
+            bagTotal = nil,
+            gold = 0,
+            silver = 0,
+            copper = 0,
+        }
+        updateInventorySummaryLabels(inventory)
     end
 
     local sourceButton = getInventorySourceButton(botName)
@@ -926,8 +924,15 @@ local function prepareInventoryForBot(botName)
         sourceButton.setEnable()
     end
 
-    requestInventoryForBot(botName)
-    return true
+    local requested = requestInventoryForBot(botName)
+    if not requested then
+        local waitButton = getInventoryWaitButton(botName)
+        if waitButton and (waitButton.waitFor == "INVENTORY" or waitButton.waitFor == "ITEM" or waitButton.waitFor == "LOOT") then
+            waitButton.waitFor = ""
+        end
+    end
+
+    return requested
 end
 
 local function setInventoryActionState(buttonKey, options)

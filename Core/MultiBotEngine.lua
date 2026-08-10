@@ -2456,6 +2456,20 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 				if bridge then
 					bridge.lastError = nil
 				end
+
+				-- P2B review fix v2: INV_* can be processed reentrantly before
+				-- RequestInventory returns. Neutralize stale data only while the
+				-- same request is still active and INV_BEGIN has not already run.
+				local activeInventoryRequest = bridge and bridge.inventoryActive or nil
+				if activeInventoryRequest
+						and activeInventoryRequest.botNameKey == string.lower(botName)
+						and activeInventoryRequest.begun ~= true then
+					local inventory = MultiBot.inventory
+					if inventory and inventory.name == botName and type(inventory.beginPayload) == "function" then
+						inventory:beginPayload(botName)
+					end
+				end
+
 				clearWaitState(waitButton)
 				return true
 			end

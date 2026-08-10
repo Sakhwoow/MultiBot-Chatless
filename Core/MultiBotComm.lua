@@ -1293,6 +1293,7 @@ function Comm.RequestInventory(name)
     botNameKey = string.lower(name),
     token = token,
     startedAt = safeNow(),
+    begun = false,
   }
 
   if not Comm.Send("GET", "INVENTORY~" .. name .. "~" .. token) then
@@ -3570,7 +3571,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.connected = true
     state.lastError = nil
 
-    if getActiveInventoryRequest(botName, token) then
+    local active = getActiveInventoryRequest(botName, token)
+    if active then
+      active.begun = true
       local inventory = getInventoryFrame()
       if inventory and inventory.beginPayload then
         inventory:beginPayload(trim(botName))

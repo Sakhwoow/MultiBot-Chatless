@@ -14,6 +14,7 @@ Comm.version = "1"
 local STATE_FRAMING_CAPABILITY = "STATE_FRAMING_V1"
 local STRATEGY_MUTATION_CAPABILITY = "STRATEGY_MUTATION_V1"
 local OUTFIT_CAPABILITY = "OUTFIT_V1"
+local INVENTORY_CAPABILITY = "INVENTORY_V1"
 local STATE_TIMEOUT_SECONDS = 5.0
 local STATES_TIMEOUT_SECONDS = 15.0
 local STRATEGY_MUTATION_TIMEOUT_SECONDS = 5.0
@@ -211,6 +212,7 @@ local function ensureBridgeState()
   state.stateFramingCapable = state.stateFramingCapable or false
   state.strategyMutationCapable = state.strategyMutationCapable or false
   state.outfitCapable = state.outfitCapable or false
+  state.inventoryCapable = state.inventoryCapable or false
   state.strategyMutationSeq = state.strategyMutationSeq or 0
   state.strategyMutationCommands = state.strategyMutationCommands or {}
   state.weaponEnchantDebugSeq = state.weaponEnchantDebugSeq or 0
@@ -1280,7 +1282,7 @@ end
 function Comm.RequestInventory(name)
   local state = ensureBridgeState()
   name = trim(name)
-  if name == "" or not state.connected then
+  if name == "" or not state.connected or state.inventoryCapable ~= true then
     return false
   end
 
@@ -1562,6 +1564,7 @@ function Comm.MarkDisconnected(reason)
   state.formationQueryActive = nil
   state.strategyMutationCapable = false
   state.outfitCapable = false
+  state.inventoryCapable = false
   state.stateFramingCapable = false
 
   local pendingTokens = {}
@@ -3234,6 +3237,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.stateFramingCapable = false
     state.strategyMutationCapable = false
     state.outfitCapable = false
+    state.inventoryCapable = false
     for capability in string.gmatch(payload or "", "([^,]+)") do
       capability = trim(capability)
       if capability == STATE_FRAMING_CAPABILITY then
@@ -3242,6 +3246,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.strategyMutationCapable = true
       elseif capability == OUTFIT_CAPABILITY then
         state.outfitCapable = true
+      elseif capability == INVENTORY_CAPABILITY then
+        state.inventoryCapable = true
       end
     end
     debugPrint("ADDON:RX", "CAPS", payload or "")
@@ -4443,6 +4449,7 @@ function Comm.OnPlayerEnteringWorld()
   state.stateFramingCapable = false
   state.strategyMutationCapable = false
   state.outfitCapable = false
+  state.inventoryCapable = false
   state.strategyMutationCommands = {}
   state.details = {}
   state.stats = {}

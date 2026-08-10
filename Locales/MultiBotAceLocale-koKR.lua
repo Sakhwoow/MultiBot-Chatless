@@ -1028,6 +1028,13 @@ local koKRValues = {
   ["formation.name.unknown"] = "알 수 없음",
   ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: 전략 명령에 실패했습니다 (%s). 채팅 대체 전송을 사용하지 않았습니다.",
   ["strategy.warning.refused"] = "MultiBot: 전략 명령이 거부되었습니다 - %s",
+  ["info.outfits.feedback_equip"] = "장비 세트 \"%s\": 장착 완료.",
+  ["info.outfits.feedback_replace"] = "장비 세트 \"%s\": 교체 완료.",
+  ["info.outfits.feedback_update"] = "장비 세트 \"%s\": 업데이트 완료.",
+  ["info.outfits.feedback_created"] = "장비 세트 \"%s\": 생성 완료.",
+  ["info.outfits.feedback_reset"] = "장비 세트 \"%s\": 초기화 완료.",
+  ["info.outfits.bridge_unavailable"] = "장비 세트 브리지를 사용할 수 없습니다. 채팅 대체 전송을 사용하지 않았습니다.",
+  ["info.outfits.send_failed"] = "장비 세트 요청을 브리지로 보내지 못했습니다.",
 }
 
 register("koKR", koKRValues)

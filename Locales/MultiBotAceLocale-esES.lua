@@ -1037,6 +1037,13 @@ local esESValues = {
   ["formation.name.unknown"] = "Desconocida",
   ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: fallo del comando de estrategia (%s). No se envió ningún fallback por chat.",
   ["strategy.warning.refused"] = "MultiBot: comando de estrategia rechazado - %s",
+  ["info.outfits.feedback_equip"] = "Conjunto «%s» equipado.",
+  ["info.outfits.feedback_replace"] = "Conjunto «%s» reemplazado.",
+  ["info.outfits.feedback_update"] = "Conjunto «%s» actualizado.",
+  ["info.outfits.feedback_created"] = "Conjunto «%s» creado.",
+  ["info.outfits.feedback_reset"] = "Conjunto «%s» restablecido.",
+  ["info.outfits.bridge_unavailable"] = "Bridge de conjuntos no disponible. No se envió ningún fallback por chat.",
+  ["info.outfits.send_failed"] = "No se pudo enviar la solicitud de conjunto al bridge.",
 }
 
 register("esES", esESValues)

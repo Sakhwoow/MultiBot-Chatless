@@ -1039,6 +1039,13 @@ local enGBValues = {
   ["formation.name.unknown"] = "Unknown",
   ["strategy.warning.blocked"] = "|cffff4444[MultiBot]|r %s: strategy command failed (%s). No chat fallback was sent.",
   ["strategy.warning.refused"] = "MultiBot: strategy command refused - %s",
+  ["info.outfits.feedback_equip"] = "Outfit \"%s\" equipped.",
+  ["info.outfits.feedback_replace"] = "Outfit \"%s\" replaced.",
+  ["info.outfits.feedback_update"] = "Outfit \"%s\" updated.",
+  ["info.outfits.feedback_created"] = "Outfit \"%s\" created.",
+  ["info.outfits.feedback_reset"] = "Outfit \"%s\" reset.",
+  ["info.outfits.bridge_unavailable"] = "Outfit bridge unavailable. No chat fallback was sent.",
+  ["info.outfits.send_failed"] = "Outfit request could not be sent to the bridge.",
 }
 
 register("enGB", enGBValues)

@@ -526,9 +526,23 @@ local function _mbStrategySubject(commandScope, target)
 	return commandScope
 end
 
+local function _mbStrategyReasonText(reason)
+	reason = tostring(reason or "")
+	local code = string.match(reason, "^([A-Z][A-Z0-9_]*)$")
+	if(not code) then
+		code = string.match(reason, "^([A-Z][A-Z0-9_]*)~")
+	end
+	if(not code) then
+		code = "UNKNOWN"
+	end
+
+	local fallback = MultiBot.L("strategy.reason.UNKNOWN", "The strategy command failed for an unknown reason.")
+	return MultiBot.L("strategy.reason." .. code, fallback)
+end
+
 local function _mbWarnStrategyMutationBlocked(commandScope, target, reason)
 	local subject = _mbStrategySubject(commandScope, target)
-	local detail = tostring(reason or "STRATEGY_REJECTED")
+	local detail = _mbStrategyReasonText(reason or "STRATEGY_REJECTED")
 	local message = string.format(MultiBot.L("strategy.warning.blocked"), subject, detail)
 
 	if(DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage) then

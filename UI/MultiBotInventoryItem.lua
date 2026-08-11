@@ -526,7 +526,11 @@ local function getInventoryItemActionReason(reason)
         return ""
     end
 
-    return inventoryItemL("inventory.item_action.reason." .. reason, reason)
+    local fallback = inventoryItemL(
+        "inventory.item_action.reason.UNKNOWN",
+        "The server returned an unknown item-action error."
+    )
+    return inventoryItemL("inventory.item_action.reason." .. reason, fallback)
 end
 
 function MultiBot.OnBridgeInventoryItemActionResult(botName, action, itemId, result, reason, moved)
@@ -577,7 +581,7 @@ function MultiBot.OnBridgeInventoryItemActionResult(botName, action, itemId, res
         and MultiBot.bankFrame and MultiBot.bankFrame.IsShown and MultiBot.bankFrame:IsShown()
         and MultiBot.bankFrame.botName == botName then
         if MultiBot.bankFrame.status then
-            MultiBot.bankFrame.status:SetText(reasonText ~= "" and reasonText or tostring(reason or ""))
+            MultiBot.bankFrame.status:SetText(reasonText ~= "" and reasonText or inventoryItemL("inventory.item_action.reason.UNKNOWN", "The server returned an unknown item-action error."))
         end
         if MultiBot.bankFrame.render then
             MultiBot.bankFrame:render()
@@ -589,7 +593,7 @@ function MultiBot.OnBridgeInventoryItemActionResult(botName, action, itemId, res
         and MultiBot.professionRecipeFrame.status then
         MultiBot.professionRecipeFrame.status:SetText(string.format(
             inventoryItemL("inventory.item_action.buy.err", "Purchase failed: %s"),
-            reasonText ~= "" and reasonText or tostring(reason or "")
+            reasonText ~= "" and reasonText or inventoryItemL("inventory.item_action.reason.UNKNOWN", "The server returned an unknown item-action error.")
         ))
     end
 

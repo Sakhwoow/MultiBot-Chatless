@@ -483,7 +483,7 @@ local function getCraftReasonText(reason, skillId)
         return string.format(L("profession.recipes.craft.reason.cast_code", "The server refused the cast (code %s)."), castCode)
     end
 
-    return L("profession.recipes.craft.reason." .. reason, reason)
+    return L("profession.recipes.craft.reason." .. reason, L("profession.recipes.craft.reason.UNKNOWN", "The server returned an unknown crafting error."))
 end
 
 local function scheduleRecipeRefresh(botName, skillId)

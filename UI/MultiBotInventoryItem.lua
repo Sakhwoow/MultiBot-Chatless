@@ -541,12 +541,24 @@ function MultiBot.OnBridgeInventoryItemActionResult(botName, action, itemId, res
     end
 
     if result == "OK" then
-        addInventorySystemMessage(string.format(
-            inventoryItemL("inventory.item_action.ok", "%s: %s x%d."),
-            actionLabel,
-            itemName,
-            tonumber(moved or 0) or 0
-        ))
+        if action == "SELL_GREY" then
+            addInventorySystemMessage(string.format(
+                inventoryItemL("inventory.item_action.sell_grey.ok", "Grey item sale: %d item(s) sold."),
+                tonumber(moved or 0) or 0
+            ))
+        elseif action == "SELL_VENDOR" then
+            addInventorySystemMessage(string.format(
+                inventoryItemL("inventory.item_action.sell_vendor.ok", "Vendor item sale: %d item(s) sold."),
+                tonumber(moved or 0) or 0
+            ))
+        else
+            addInventorySystemMessage(string.format(
+                inventoryItemL("inventory.item_action.ok", "%s: %s x%d."),
+                actionLabel,
+                itemName,
+                tonumber(moved or 0) or 0
+            ))
+        end
 
         requestInventoryPostActionRefresh(botName, 0.45, 1.20)
         if MultiBot.RefreshBotBank and (action == "BANK_DEPOSIT" or action == "BANK_WITHDRAW") then

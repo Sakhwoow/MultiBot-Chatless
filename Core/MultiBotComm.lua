@@ -1518,7 +1518,16 @@ function Comm.RunInventoryItemAction(name, action, itemId, count)
   action = string.upper(trim(action))
   itemId = tonumber(itemId or 0) or 0
   count = tonumber(count or 0) or 0
-  if name == "" or action == "" or itemId <= 0 or count < 0 or not state.connected then
+
+  local allowsZeroItemId = action == "SELL_GREY" or action == "SELL_VENDOR"
+  if name == "" or action == "" or itemId < 0 or count < 0 or not state.connected then
+    return false
+  end
+  if allowsZeroItemId then
+    if itemId ~= 0 or count ~= 0 then
+      return false
+    end
+  elseif itemId <= 0 then
     return false
   end
 

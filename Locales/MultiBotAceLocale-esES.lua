@@ -1017,7 +1017,7 @@ local esESValues = {
   ["info.trainer.reason.NO_SPELL"] = "Hechizo no encontrado.",
   ["info.trainer.reason.NO_MATCHING_SPELL"] = "Este hechizo ya no está disponible.",
   ["info.trainer.reason.TOO_EXPENSIVE"] = "El bot no tiene suficiente dinero disponible.",
-  ["info.trainer.reason.UNKNOWN"] = "El servidor devolvió un error desconocido del instructor.",
+  ["info.trainer.reason.UNKNOWN"] = "El servidor devolvió un error desconocido del entrenador.",
   ["tips.outfits.equip"] = "Clic izquierdo: Equipar\nClic derecho: Reemplazar",
   -- Chatless formation query
   ["tips.tankFace"] = "Tank Face|cffffffff\nActiva la estrategia de posicionamiento Tank Face.\nCuando el bot tiene la amenaza en cuerpo a cuerpo, intenta orientar al objetivo en dirección opuesta al grupo.\nEsta estrategia no asigna el rol de tanque y es independiente de Tank y Asistencia Tank.|r\n\n|cffff0000Clic izquierdo para activar o desactivar Tank Face|r\n|cff999999(Orden de ejecución: Bot)|r",
@@ -1044,6 +1044,7 @@ local esESValues = {
   ["strategy.warning.refused"] = "MultiBot: comando de estrategia rechazado - %s",
   ["strategy.reason.STRATEGY_BRIDGE_UNAVAILABLE"] = "El bridge de estrategia no está disponible.",
   ["strategy.reason.STRATEGY_NOT_CONNECTED"] = "El bridge de estrategia no está conectado.",
+  ["strategy.reason.DISCONNECTED"] = "Se perdió la conexión con el bridge de estrategia.",
   ["strategy.reason.STRATEGY_CAPABILITY_UNAVAILABLE"] = "El bridge conectado no admite la modificación de estrategias.",
   ["strategy.reason.STRATEGY_CLIENT_UNAVAILABLE"] = "La modificación de estrategias no está disponible en el addon.",
   ["strategy.reason.STRATEGY_UNAVAILABLE"] = "La modificación de estrategias no está disponible.",

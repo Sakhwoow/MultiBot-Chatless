@@ -1044,6 +1044,7 @@ local ruRUValues = {
   ["strategy.warning.refused"] = "MultiBot: команда стратегии отклонена - %s",
   ["strategy.reason.STRATEGY_BRIDGE_UNAVAILABLE"] = "Мост стратегий недоступен.",
   ["strategy.reason.STRATEGY_NOT_CONNECTED"] = "Мост стратегий не подключён.",
+  ["strategy.reason.DISCONNECTED"] = "Соединение с мостом стратегий потеряно.",
   ["strategy.reason.STRATEGY_CAPABILITY_UNAVAILABLE"] = "Подключённый мост не поддерживает изменение стратегий.",
   ["strategy.reason.STRATEGY_CLIENT_UNAVAILABLE"] = "Изменение стратегий недоступно в аддоне.",
   ["strategy.reason.STRATEGY_UNAVAILABLE"] = "Изменение стратегий недоступно.",

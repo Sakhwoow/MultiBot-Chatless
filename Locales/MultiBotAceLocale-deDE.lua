@@ -1043,6 +1043,7 @@ local deDEValues = {
   ["strategy.warning.refused"] = "MultiBot: Strategiebefehl abgelehnt - %s",
   ["strategy.reason.STRATEGY_BRIDGE_UNAVAILABLE"] = "Die Strategie-Bridge ist nicht verfügbar.",
   ["strategy.reason.STRATEGY_NOT_CONNECTED"] = "Die Strategie-Bridge ist nicht verbunden.",
+  ["strategy.reason.DISCONNECTED"] = "Die Verbindung zur Strategie-Bridge wurde getrennt.",
   ["strategy.reason.STRATEGY_CAPABILITY_UNAVAILABLE"] = "Die verbundene Bridge unterstützt keine Strategieänderungen.",
   ["strategy.reason.STRATEGY_CLIENT_UNAVAILABLE"] = "Strategieänderungen sind im Addon nicht verfügbar.",
   ["strategy.reason.STRATEGY_UNAVAILABLE"] = "Strategieänderungen sind nicht verfügbar.",

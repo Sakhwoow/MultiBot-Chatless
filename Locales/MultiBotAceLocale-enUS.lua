@@ -1046,6 +1046,7 @@ local enUSValues = {
   ["strategy.warning.refused"] = "MultiBot: strategy command refused - %s",
   ["strategy.reason.STRATEGY_BRIDGE_UNAVAILABLE"] = "Strategy bridge is unavailable.",
   ["strategy.reason.STRATEGY_NOT_CONNECTED"] = "The strategy bridge is not connected.",
+  ["strategy.reason.DISCONNECTED"] = "The strategy bridge connection was lost.",
   ["strategy.reason.STRATEGY_CAPABILITY_UNAVAILABLE"] = "Strategy mutation is not supported by the connected bridge.",
   ["strategy.reason.STRATEGY_CLIENT_UNAVAILABLE"] = "Strategy mutation is unavailable in the addon.",
   ["strategy.reason.STRATEGY_UNAVAILABLE"] = "Strategy mutation is unavailable.",

@@ -1043,6 +1043,7 @@ local frFRValues = {
   ["strategy.warning.refused"] = "MultiBot : commande de stratégie refusée - %s",
   ["strategy.reason.STRATEGY_BRIDGE_UNAVAILABLE"] = "Le bridge de stratégie est indisponible.",
   ["strategy.reason.STRATEGY_NOT_CONNECTED"] = "Le bridge de stratégie n'est pas connecté.",
+  ["strategy.reason.DISCONNECTED"] = "La connexion au bridge de stratégie a été perdue.",
   ["strategy.reason.STRATEGY_CAPABILITY_UNAVAILABLE"] = "La modification des stratégies n'est pas prise en charge par le bridge connecté.",
   ["strategy.reason.STRATEGY_CLIENT_UNAVAILABLE"] = "La modification des stratégies est indisponible dans l'addon.",
   ["strategy.reason.STRATEGY_UNAVAILABLE"] = "La modification des stratégies est indisponible.",

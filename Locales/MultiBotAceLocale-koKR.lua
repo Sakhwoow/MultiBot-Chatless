@@ -1035,6 +1035,7 @@ local koKRValues = {
   ["strategy.warning.refused"] = "MultiBot: 전략 명령이 거부되었습니다 - %s",
   ["strategy.reason.STRATEGY_BRIDGE_UNAVAILABLE"] = "전략 브리지를 사용할 수 없습니다.",
   ["strategy.reason.STRATEGY_NOT_CONNECTED"] = "전략 브리지가 연결되어 있지 않습니다.",
+  ["strategy.reason.DISCONNECTED"] = "전략 브리지 연결이 끊어졌습니다.",
   ["strategy.reason.STRATEGY_CAPABILITY_UNAVAILABLE"] = "연결된 브리지가 전략 변경을 지원하지 않습니다.",
   ["strategy.reason.STRATEGY_CLIENT_UNAVAILABLE"] = "애드온에서 전략 변경을 사용할 수 없습니다.",
   ["strategy.reason.STRATEGY_UNAVAILABLE"] = "전략 변경을 사용할 수 없습니다.",

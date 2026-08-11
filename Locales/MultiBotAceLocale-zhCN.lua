@@ -1044,6 +1044,7 @@ local zhCNValues = {
   ["strategy.warning.refused"] = "MultiBot：策略命令被拒绝 - %s",
   ["strategy.reason.STRATEGY_BRIDGE_UNAVAILABLE"] = "策略桥接不可用。",
   ["strategy.reason.STRATEGY_NOT_CONNECTED"] = "策略桥接未连接。",
+  ["strategy.reason.DISCONNECTED"] = "策略桥接连接已断开。",
   ["strategy.reason.STRATEGY_CAPABILITY_UNAVAILABLE"] = "已连接的桥接不支持策略修改。",
   ["strategy.reason.STRATEGY_CLIENT_UNAVAILABLE"] = "插件中的策略修改不可用。",
   ["strategy.reason.STRATEGY_UNAVAILABLE"] = "策略修改不可用。",

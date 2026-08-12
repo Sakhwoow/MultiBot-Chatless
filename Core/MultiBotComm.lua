@@ -34,6 +34,7 @@ local STATE_BOOTSTRAP_MAX_AUTO_ATTEMPTS = 3
 
 local requestBootstrapStates
 local flushPendingStateRefreshes
+local armCapabilityFallback
 local maybeResolveCapabilityFallback
 
 local function safeNow()
@@ -555,6 +556,7 @@ function Comm.RequestState(name)
 
   if not state.capabilitiesResolved then
     local queued = queuePendingStateRefresh(state, name, false)
+    armCapabilityFallback(state.connectionGeneration)
     maybeResolveCapabilityFallback(state.connectionGeneration)
     return queued
   end
@@ -590,6 +592,7 @@ function Comm.RequestStates()
   local state = ensureBridgeState()
   if not state.capabilitiesResolved then
     local queued = queuePendingStateRefresh(state, "", true)
+    armCapabilityFallback(state.connectionGeneration)
     maybeResolveCapabilityFallback(state.connectionGeneration)
     return queued
   end
@@ -681,7 +684,7 @@ flushPendingStateRefreshes = function()
   return sent
 end
 
-local function armCapabilityFallback(generation)
+armCapabilityFallback = function(generation)
   local state = ensureBridgeState()
   if state.connectionGeneration ~= generation or state.capabilitiesResolved then
     return false

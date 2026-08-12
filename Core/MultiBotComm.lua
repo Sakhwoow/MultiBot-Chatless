@@ -28,6 +28,14 @@ local STATE_MAX_BOTS = 128
 local STATE_MAX_STRATEGIES_PER_SCOPE = 256
 local STATE_MAX_STRATEGY_LENGTH = 192
 local STATE_MAX_TOTAL_BYTES = 32768
+local STATE_CAPABILITY_FALLBACK_SECONDS = 3.0
+local STATE_BOOTSTRAP_RETRY_SECONDS = 1.0
+local STATE_BOOTSTRAP_MAX_AUTO_ATTEMPTS = 3
+
+local requestBootstrapStates
+local flushPendingStateRefreshes
+local armCapabilityFallback
+local maybeResolveCapabilityFallback
 
 local function safeNow()
   if type(GetTime) == "function" then
@@ -211,6 +219,16 @@ local function ensureBridgeState()
   state.stateLatestOrderByBot = state.stateLatestOrderByBot or {}
   state.stateGlobalLatestToken = state.stateGlobalLatestToken or nil
   state.stateFramingCapable = state.stateFramingCapable or false
+  state.connectionGeneration = tonumber(state.connectionGeneration) or 0
+  state.capabilityFallbackDeadline = tonumber(state.capabilityFallbackDeadline) or 0
+  state.capabilityFallbackGeneration = tonumber(state.capabilityFallbackGeneration) or 0
+  state.capabilitiesResolved = state.capabilitiesResolved or false
+  state.bootstrapStatePending = state.bootstrapStatePending or false
+  state.bootstrapStateRequested = state.bootstrapStateRequested or false
+  state.bootstrapStateToken = state.bootstrapStateToken or nil
+  state.bootstrapStateAttempts = tonumber(state.bootstrapStateAttempts) or 0
+  state.pendingStateRefreshAll = state.pendingStateRefreshAll or false
+  state.pendingStateRefreshByBot = state.pendingStateRefreshByBot or {}
   state.strategyMutationCapable = state.strategyMutationCapable or false
   state.outfitCapable = state.outfitCapable or false
   state.inventoryCapable = state.inventoryCapable or false
@@ -318,6 +336,47 @@ local function clearStateRequest(state, token)
 
   clearStateTransactionsForToken(state, token)
   state.stateRequests[token] = nil
+
+  if state.bootstrapStateToken == token then
+    state.bootstrapStateToken = nil
+  end
+end
+
+local function scheduleBootstrapStateRetry(generation)
+  local state = ensureBridgeState()
+  if state.bootstrapStateAttempts >= STATE_BOOTSTRAP_MAX_AUTO_ATTEMPTS then
+    return
+  end
+
+  if not (MultiBot and type(MultiBot.TimerAfter) == "function") then
+    return
+  end
+
+  MultiBot.TimerAfter(STATE_BOOTSTRAP_RETRY_SECONDS, function()
+    local bridge = ensureBridgeState()
+    if bridge.connectionGeneration ~= generation
+        or not bridge.connected
+        or not bridge.capabilitiesResolved
+        or bridge.bootstrapStateRequested
+        or not bridge.bootstrapStatePending then
+      return
+    end
+
+    requestBootstrapStates()
+  end)
+end
+
+local function failBootstrapStateRequest(state, token)
+  if state.bootstrapStateToken ~= token then
+    return false
+  end
+
+  local generation = state.connectionGeneration
+  state.bootstrapStateToken = nil
+  state.bootstrapStateRequested = false
+  state.bootstrapStatePending = true
+  scheduleBootstrapStateRetry(generation)
+  return true
 end
 
 local function scheduleStateTimeout(token, isGlobal)
@@ -332,6 +391,7 @@ local function scheduleStateTimeout(token, isGlobal)
       return
     end
 
+    failBootstrapStateRequest(state, token)
     clearStateRequest(state, token)
     state.lastError = "STATE_TIMEOUT~" .. token
   end)
@@ -360,10 +420,14 @@ local function beginStateRequest(state, botName, isGlobal)
 
   if isGlobal then
     local previous = state.stateGlobalLatestToken
+    local replacesBootstrap = previous and state.bootstrapStateToken == previous
     if previous and previous ~= token then
       clearStateRequest(state, previous)
     end
     state.stateGlobalLatestToken = token
+    if replacesBootstrap then
+      state.bootstrapStateToken = token
+    end
   else
     local botKey = string.lower(botName or "")
     local previous = state.stateLatestByBot[botKey]
@@ -456,11 +520,45 @@ function Comm.RequestRoster()
   return Comm.Send("GET", "ROSTER")
 end
 
+local function queuePendingStateRefresh(state, name, isGlobal)
+  if isGlobal then
+    state.pendingStateRefreshAll = true
+    state.pendingStateRefreshByBot = {}
+    return true
+  end
+
+  if state.pendingStateRefreshAll then
+    return true
+  end
+
+  local key = string.lower(name or "")
+  if key == "" then
+    return false
+  end
+
+  if countTableEntries(state.pendingStateRefreshByBot) >= STATE_MAX_BOTS
+      and state.pendingStateRefreshByBot[key] == nil then
+    state.pendingStateRefreshAll = true
+    state.pendingStateRefreshByBot = {}
+    return true
+  end
+
+  state.pendingStateRefreshByBot[key] = name
+  return true
+end
+
 function Comm.RequestState(name)
   local state = ensureBridgeState()
   name = trim(name)
   if name == "" then
     return false
+  end
+
+  if not state.capabilitiesResolved then
+    local queued = queuePendingStateRefresh(state, name, false)
+    armCapabilityFallback(state.connectionGeneration)
+    maybeResolveCapabilityFallback(state.connectionGeneration)
+    return queued
   end
 
   if not state.stateFramingCapable then
@@ -492,6 +590,13 @@ end
 
 function Comm.RequestStates()
   local state = ensureBridgeState()
+  if not state.capabilitiesResolved then
+    local queued = queuePendingStateRefresh(state, "", true)
+    armCapabilityFallback(state.connectionGeneration)
+    maybeResolveCapabilityFallback(state.connectionGeneration)
+    return queued
+  end
+
   if not state.stateFramingCapable then
     return Comm.Send("GET", "STATES")
   end
@@ -507,6 +612,118 @@ function Comm.RequestStates()
   end
 
   return token
+end
+
+requestBootstrapStates = function()
+  local state = ensureBridgeState()
+  if state.bootstrapStateRequested then
+    return false
+  end
+
+  if not state.capabilitiesResolved then
+    state.bootstrapStatePending = true
+    return true
+  end
+
+  if not Comm.RequestStates then
+    return false
+  end
+
+  local request = Comm.RequestStates()
+  if not request then
+    state.bootstrapStatePending = true
+    return false
+  end
+
+  state.bootstrapStatePending = false
+  state.bootstrapStateRequested = true
+  state.bootstrapStateAttempts = state.bootstrapStateAttempts + 1
+  state.bootstrapStateToken = type(request) == "string" and request or nil
+  return request
+end
+
+flushPendingStateRefreshes = function()
+  local state = ensureBridgeState()
+  if not state.capabilitiesResolved then
+    return false
+  end
+
+  if state.bootstrapStatePending and not state.bootstrapStateRequested then
+    if requestBootstrapStates() then
+      state.pendingStateRefreshAll = false
+      state.pendingStateRefreshByBot = {}
+      return true
+    end
+  elseif state.bootstrapStateRequested then
+    state.pendingStateRefreshAll = false
+    state.pendingStateRefreshByBot = {}
+    return true
+  end
+
+  if state.pendingStateRefreshAll then
+    state.pendingStateRefreshAll = false
+    state.pendingStateRefreshByBot = {}
+    if not Comm.RequestStates() then
+      state.pendingStateRefreshAll = true
+      return false
+    end
+    return true
+  end
+
+  local pending = state.pendingStateRefreshByBot
+  state.pendingStateRefreshByBot = {}
+  local sent = false
+  for key, name in pairs(pending or {}) do
+    if Comm.RequestState(name) then
+      sent = true
+    else
+      state.pendingStateRefreshByBot[key] = name
+    end
+  end
+
+  return sent
+end
+
+armCapabilityFallback = function(generation)
+  local state = ensureBridgeState()
+  if state.connectionGeneration ~= generation or state.capabilitiesResolved then
+    return false
+  end
+
+  if state.capabilityFallbackGeneration == generation
+      and state.capabilityFallbackDeadline > 0 then
+    return true
+  end
+
+  state.capabilityFallbackGeneration = generation
+  state.capabilityFallbackDeadline = safeNow() + STATE_CAPABILITY_FALLBACK_SECONDS
+
+  if MultiBot and type(MultiBot.TimerAfter) == "function" then
+    MultiBot.TimerAfter(STATE_CAPABILITY_FALLBACK_SECONDS, function()
+      maybeResolveCapabilityFallback(generation)
+    end)
+  end
+
+  return true
+end
+
+maybeResolveCapabilityFallback = function(generation)
+  local state = ensureBridgeState()
+  if state.connectionGeneration ~= generation
+      or state.capabilityFallbackGeneration ~= generation
+      or state.capabilitiesResolved
+      or not state.connected
+      or state.capabilityFallbackDeadline <= 0
+      or safeNow() < state.capabilityFallbackDeadline then
+    return false
+  end
+
+  state.capabilityFallbackDeadline = 0
+  state.capabilityFallbackGeneration = 0
+  state.stateFramingCapable = false
+  state.capabilitiesResolved = true
+  flushPendingStateRefreshes()
+  return true
 end
 
 function Comm.RequestBotDetail(name)
@@ -1557,6 +1774,7 @@ end
 
 function Comm.MarkDisconnected(reason)
   local state = ensureBridgeState()
+  state.connectionGeneration = state.connectionGeneration + 1
   state.connected = false
   state.server = nil
   state.protocol = nil
@@ -1582,6 +1800,15 @@ function Comm.MarkDisconnected(reason)
   state.inventoryCapable = false
   state.inventoryBulkSellCapable = false
   state.stateFramingCapable = false
+  state.capabilityFallbackDeadline = 0
+  state.capabilityFallbackGeneration = 0
+  state.capabilitiesResolved = false
+  state.bootstrapStatePending = false
+  state.bootstrapStateRequested = false
+  state.bootstrapStateToken = nil
+  state.bootstrapStateAttempts = 0
+  state.pendingStateRefreshAll = false
+  state.pendingStateRefreshByBot = {}
 
   local pendingTokens = {}
   for token in pairs(state.strategyMutationCommands or {}) do
@@ -1763,6 +1990,7 @@ local function abortStateRequest(token, reason)
     return false
   end
 
+  failBootstrapStateRequest(state, token)
   clearStateRequest(state, token)
   state.lastError = "STATE_ABORT~" .. token .. "~" .. tostring(reason or "UNKNOWN")
   debugPrint("ADDON:RX", "STATE_ABORT", token, reason or "UNKNOWN")
@@ -3205,27 +3433,32 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
   local opcode, payload = splitOnce(message or "", "~")
   opcode = string.upper(trim(opcode))
 
+  if opcode ~= "CAPS" then
+    maybeResolveCapabilityFallback(state.connectionGeneration)
+  end
+
   if opcode == "HELLO_ACK" then
     local protocol, serverName = splitOnce(payload, "~")
     local wasConnected = state.connected == true
+    local generation = state.connectionGeneration
 
     state.connected = true
     state.protocol = protocol ~= "" and protocol or nil
     state.server = serverName ~= "" and serverName or nil
     state.lastError = nil
     debugPrint("ADDON:RX", "HELLO_ACK", payload or "")
+    armCapabilityFallback(generation)
 
     if (not wasConnected or state.bootstrapPending) and state.protocol then
       safeDelay(0.10, function()
-        if MultiBot and MultiBot.bridge and MultiBot.bridge.connected then
-          state.bootstrapPending = false
-          state.bootstrapDeadline = 0
+        local bridge = ensureBridgeState()
+        if bridge.connectionGeneration == generation and bridge.connected then
+          bridge.bootstrapPending = false
+          bridge.bootstrapDeadline = 0
           if Comm.RequestRoster then
             Comm.RequestRoster()
           end
-          if Comm.RequestStates then
-            Comm.RequestStates()
-          end
+          requestBootstrapStates()
           if Comm.RequestBotDetails then
             Comm.RequestBotDetails()
           end
@@ -3269,7 +3502,11 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.inventoryBulkSellCapable = true
       end
     end
+    state.capabilityFallbackDeadline = 0
+    state.capabilityFallbackGeneration = 0
+    state.capabilitiesResolved = true
     debugPrint("ADDON:RX", "CAPS", payload or "")
+    flushPendingStateRefreshes()
     return true
   end
 
@@ -4435,6 +4672,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
             reason = reason,
           })
         elseif (requestType == "STATE" or requestType == "STATES") and state.stateRequests[token] then
+          failBootstrapStateRequest(state, token)
           clearStateRequest(state, token)
         end
       end
@@ -4447,16 +4685,20 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
   return true
 end
 
-local function dispatchBootstrapRequests()
+local function dispatchBootstrapRequests(generation)
+  local state = ensureBridgeState()
+  if generation ~= nil and state.connectionGeneration ~= generation then
+    return false
+  end
+
   Comm.SendHello()
   Comm.SendPing()
   Comm.RequestRoster()
-  if Comm.RequestStates then
-    Comm.RequestStates()
-  end
+  requestBootstrapStates()
   if Comm.RequestBotDetails then
     Comm.RequestBotDetails()
   end
+  return true
 end
 
 function Comm.OnPlayerEnteringWorld()
@@ -4468,6 +4710,13 @@ function Comm.OnPlayerEnteringWorld()
   state.stateLatestOrderByBot = {}
   state.stateGlobalLatestToken = nil
   state.stateFramingCapable = false
+  state.capabilitiesResolved = false
+  state.bootstrapStatePending = false
+  state.bootstrapStateRequested = false
+  state.bootstrapStateToken = nil
+  state.bootstrapStateAttempts = 0
+  state.pendingStateRefreshAll = false
+  state.pendingStateRefreshByBot = {}
   state.strategyMutationCapable = false
   state.outfitCapable = false
   state.inventoryCapable = false
@@ -4502,6 +4751,7 @@ function Comm.OnPlayerEnteringWorld()
   state.trainerCommands = {}
   state.trainerSpells = {}
   Comm.MarkDisconnected(nil)
+  local generation = state.connectionGeneration
   state.trainerActive = nil
   state.trainerCommands = {}
   state.trainerSpells = {}
@@ -4510,6 +4760,9 @@ function Comm.OnPlayerEnteringWorld()
 
   local function expireBootstrap()
     local bridge = ensureBridgeState()
+    if bridge.connectionGeneration ~= generation then
+      return
+    end
     if not bridge.connected and bridge.bootstrapPending and bridge.bootstrapDeadline > 0 and safeNow() >= bridge.bootstrapDeadline then
       bridge.bootstrapPending = false
       bridge.bootstrapDeadline = 0
@@ -4517,15 +4770,15 @@ function Comm.OnPlayerEnteringWorld()
   end
 
   if not MultiBot.TimerAfter then
-    dispatchBootstrapRequests()
+    dispatchBootstrapRequests(generation)
     expireBootstrap()
     return
   end
 
-  dispatchBootstrapRequests()
+  dispatchBootstrapRequests(generation)
 
   MultiBot.TimerAfter(1.0, function()
-    dispatchBootstrapRequests()
+    dispatchBootstrapRequests(generation)
   end)
 
   MultiBot.TimerAfter(4.1, expireBootstrap)

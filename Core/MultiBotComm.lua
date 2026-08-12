@@ -1522,14 +1522,13 @@ function Comm.RunInventoryItemAction(name, action, itemId, count)
   count = tonumber(count or 0) or 0
 
   local allowsZeroItemId = action == "SELL_GREY" or action == "SELL_VENDOR"
-  if name == "" or action == "" or itemId < 0 or count < 0
-      or not state.connected or state.inventoryCapable ~= true then
-    return false
-  end
-  if allowsZeroItemId and state.inventoryBulkSellCapable ~= true then
+  if name == "" or action == "" or itemId < 0 or count < 0 or not state.connected then
     return false
   end
   if allowsZeroItemId then
+    if state.inventoryCapable ~= true or state.inventoryBulkSellCapable ~= true then
+      return false
+    end
     if itemId ~= 0 or count ~= 0 then
       return false
     end

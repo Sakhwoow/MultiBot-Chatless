@@ -1047,11 +1047,17 @@ local function runInventoryInstantAction(botName, command, options)
         if bridgeAction
             and MultiBot.bridge and MultiBot.bridge.connected == true
             and MultiBot.bridge.inventoryCapable == true
-            and MultiBot.Comm and MultiBot.Comm.RunInventoryItemAction then
+            and MultiBot.bridge.inventoryBulkSellCapable == true then
+            if not (MultiBot.Comm and MultiBot.Comm.RunInventoryItemAction) then
+                return false
+            end
+
             local token = MultiBot.Comm.RunInventoryItemAction(botName, bridgeAction, 0, 0)
             if token then
                 return true
             end
+
+            return false
         end
 
         local inventory = MultiBot.inventory

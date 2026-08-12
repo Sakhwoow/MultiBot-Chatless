@@ -211,6 +211,8 @@ local function ensureBridgeState()
   state.stateLatestOrderByBot = state.stateLatestOrderByBot or {}
   state.stateGlobalLatestToken = state.stateGlobalLatestToken or nil
   state.stateFramingCapable = state.stateFramingCapable or false
+  state.capabilitiesResolved = state.capabilitiesResolved or false
+  state.bootstrapStateRequested = state.bootstrapStateRequested or false
   state.strategyMutationCapable = state.strategyMutationCapable or false
   state.outfitCapable = state.outfitCapable or false
   state.inventoryCapable = state.inventoryCapable or false
@@ -463,6 +465,10 @@ function Comm.RequestState(name)
     return false
   end
 
+  if not state.capabilitiesResolved then
+    return false
+  end
+
   if not state.stateFramingCapable then
     return Comm.Send("GET", "STATE~" .. name)
   end
@@ -492,6 +498,10 @@ end
 
 function Comm.RequestStates()
   local state = ensureBridgeState()
+  if not state.capabilitiesResolved then
+    return false
+  end
+
   if not state.stateFramingCapable then
     return Comm.Send("GET", "STATES")
   end
@@ -507,6 +517,25 @@ function Comm.RequestStates()
   end
 
   return token
+end
+
+local function requestBootstrapStates()
+  local state = ensureBridgeState()
+  if state.bootstrapStateRequested or not state.capabilitiesResolved then
+    return false
+  end
+
+  if not Comm.RequestStates then
+    return false
+  end
+
+  local request = Comm.RequestStates()
+  if not request then
+    return false
+  end
+
+  state.bootstrapStateRequested = true
+  return request
 end
 
 function Comm.RequestBotDetail(name)
@@ -1582,6 +1611,8 @@ function Comm.MarkDisconnected(reason)
   state.inventoryCapable = false
   state.inventoryBulkSellCapable = false
   state.stateFramingCapable = false
+  state.capabilitiesResolved = false
+  state.bootstrapStateRequested = false
 
   local pendingTokens = {}
   for token in pairs(state.strategyMutationCommands or {}) do
@@ -3223,9 +3254,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
           if Comm.RequestRoster then
             Comm.RequestRoster()
           end
-          if Comm.RequestStates then
-            Comm.RequestStates()
-          end
+          requestBootstrapStates()
           if Comm.RequestBotDetails then
             Comm.RequestBotDetails()
           end
@@ -3251,6 +3280,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
   if opcode == "CAPS" then
     state.stateFramingCapable = false
+    state.capabilitiesResolved = true
     state.strategyMutationCapable = false
     state.outfitCapable = false
     state.inventoryCapable = false
@@ -3270,6 +3300,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       end
     end
     debugPrint("ADDON:RX", "CAPS", payload or "")
+    requestBootstrapStates()
     return true
   end
 
@@ -4451,9 +4482,7 @@ local function dispatchBootstrapRequests()
   Comm.SendHello()
   Comm.SendPing()
   Comm.RequestRoster()
-  if Comm.RequestStates then
-    Comm.RequestStates()
-  end
+  requestBootstrapStates()
   if Comm.RequestBotDetails then
     Comm.RequestBotDetails()
   end
@@ -4468,6 +4497,8 @@ function Comm.OnPlayerEnteringWorld()
   state.stateLatestOrderByBot = {}
   state.stateGlobalLatestToken = nil
   state.stateFramingCapable = false
+  state.capabilitiesResolved = false
+  state.bootstrapStateRequested = false
   state.strategyMutationCapable = false
   state.outfitCapable = false
   state.inventoryCapable = false
@@ -4526,6 +4557,14 @@ function Comm.OnPlayerEnteringWorld()
 
   MultiBot.TimerAfter(1.0, function()
     dispatchBootstrapRequests()
+  end)
+
+  MultiBot.TimerAfter(3.0, function()
+    local bridge = ensureBridgeState()
+    if bridge.connected and not bridge.capabilitiesResolved then
+      bridge.capabilitiesResolved = true
+      requestBootstrapStates()
+    end
   end)
 
   MultiBot.TimerAfter(4.1, expireBootstrap)

@@ -15,6 +15,7 @@ local STATE_FRAMING_CAPABILITY = "STATE_FRAMING_V1"
 local STRATEGY_MUTATION_CAPABILITY = "STRATEGY_MUTATION_V1"
 local OUTFIT_CAPABILITY = "OUTFIT_V1"
 local INVENTORY_CAPABILITY = "INVENTORY_V1"
+local INVENTORY_BULK_SELL_CAPABILITY = "INVENTORY_BULK_SELL_V1"
 local STATE_TIMEOUT_SECONDS = 5.0
 local STATES_TIMEOUT_SECONDS = 15.0
 local STRATEGY_MUTATION_TIMEOUT_SECONDS = 5.0
@@ -213,6 +214,7 @@ local function ensureBridgeState()
   state.strategyMutationCapable = state.strategyMutationCapable or false
   state.outfitCapable = state.outfitCapable or false
   state.inventoryCapable = state.inventoryCapable or false
+  state.inventoryBulkSellCapable = state.inventoryBulkSellCapable or false
   state.strategyMutationSeq = state.strategyMutationSeq or 0
   state.strategyMutationCommands = state.strategyMutationCommands or {}
   state.weaponEnchantDebugSeq = state.weaponEnchantDebugSeq or 0
@@ -1518,7 +1520,19 @@ function Comm.RunInventoryItemAction(name, action, itemId, count)
   action = string.upper(trim(action))
   itemId = tonumber(itemId or 0) or 0
   count = tonumber(count or 0) or 0
-  if name == "" or action == "" or itemId <= 0 or count < 0 or not state.connected then
+
+  local allowsZeroItemId = action == "SELL_GREY" or action == "SELL_VENDOR"
+  if name == "" or action == "" or itemId < 0 or count < 0 or not state.connected then
+    return false
+  end
+  if allowsZeroItemId then
+    if state.inventoryCapable ~= true or state.inventoryBulkSellCapable ~= true then
+      return false
+    end
+    if itemId ~= 0 or count ~= 0 then
+      return false
+    end
+  elseif itemId <= 0 then
     return false
   end
 
@@ -1566,6 +1580,7 @@ function Comm.MarkDisconnected(reason)
   state.strategyMutationCapable = false
   state.outfitCapable = false
   state.inventoryCapable = false
+  state.inventoryBulkSellCapable = false
   state.stateFramingCapable = false
 
   local pendingTokens = {}
@@ -3239,6 +3254,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.strategyMutationCapable = false
     state.outfitCapable = false
     state.inventoryCapable = false
+  state.inventoryBulkSellCapable = false
     for capability in string.gmatch(payload or "", "([^,]+)") do
       capability = trim(capability)
       if capability == STATE_FRAMING_CAPABILITY then
@@ -3249,6 +3265,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.outfitCapable = true
       elseif capability == INVENTORY_CAPABILITY then
         state.inventoryCapable = true
+      elseif capability == INVENTORY_BULK_SELL_CAPABILITY then
+        state.inventoryBulkSellCapable = true
       end
     end
     debugPrint("ADDON:RX", "CAPS", payload or "")
@@ -4453,6 +4471,7 @@ function Comm.OnPlayerEnteringWorld()
   state.strategyMutationCapable = false
   state.outfitCapable = false
   state.inventoryCapable = false
+  state.inventoryBulkSellCapable = false
   state.strategyMutationCommands = {}
   state.details = {}
   state.stats = {}

@@ -1037,6 +1037,29 @@ local function runInventoryInstantAction(botName, command, options)
     end
 
     local function runFilteredBulkSell(cmd)
+        local bridgeAction = nil
+        if cmd == "s *" then
+            bridgeAction = "SELL_GREY"
+        elseif cmd == "s vendor" then
+            bridgeAction = "SELL_VENDOR"
+        end
+
+        if bridgeAction
+            and MultiBot.bridge and MultiBot.bridge.connected == true
+            and MultiBot.bridge.inventoryCapable == true
+            and MultiBot.bridge.inventoryBulkSellCapable == true then
+            if not (MultiBot.Comm and MultiBot.Comm.RunInventoryItemAction) then
+                return false
+            end
+
+            local token = MultiBot.Comm.RunInventoryItemAction(botName, bridgeAction, 0, 0)
+            if token then
+                return true
+            end
+
+            return false
+        end
+
         local inventory = MultiBot.inventory
         local itemsFrame = inventory and inventory.frames and inventory.frames.Items
         local itemButtons = itemsFrame and itemsFrame.buttons

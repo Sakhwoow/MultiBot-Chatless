@@ -1104,6 +1104,36 @@ local function runInventoryInstantAction(botName, command, options)
         return runFilteredBulkSell(command)
     end
 
+    if command == "open items" then
+        local bridge = MultiBot.bridge
+        local canUseBridgeOpen = bridge
+            and bridge.connected == true
+            and bridge.inventoryCapable == true
+            and bridge.inventoryOpenCapable == true
+
+        if canUseBridgeOpen then
+            if not (MultiBot.Comm and MultiBot.Comm.RunInventoryItemAction) then
+                bridge.lastError = "INVENTORY_OPEN_API_UNAVAILABLE"
+                return false
+            end
+
+            local token = MultiBot.Comm.RunInventoryItemAction(botName, "OPEN_ITEMS", 0, 0)
+            if token then
+                return true
+            end
+
+            bridge.lastError = "INVENTORY_OPEN_SEND_FAILED"
+            return false
+        end
+
+        if MultiBot.allowLegacyChatFallback ~= true then
+            if bridge then
+                bridge.lastError = "INVENTORY_OPEN_CAPABILITY_UNAVAILABLE"
+            end
+            return false
+        end
+    end
+
     SendChatMessage(command, "WHISPER", nil, botName)
 
     if options.refreshDelay ~= nil and MultiBot.RefreshInventory then

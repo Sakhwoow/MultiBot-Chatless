@@ -1309,7 +1309,8 @@ local function IsBridgeRosterBotActive(botName)
     end
 
     for index = 1, raidCount do
-      if UnitName("raid" .. index) == botName then
+      local unitId = "raid" .. index
+      if UnitName(unitId) == botName and UnitIsConnected and UnitIsConnected(unitId) then
         return true
       end
     end
@@ -1323,7 +1324,8 @@ local function IsBridgeRosterBotActive(botName)
   end
 
   for index = 1, partyCount do
-    if UnitName("party" .. index) == botName then
+    local unitId = "party" .. index
+    if UnitName(unitId) == botName and UnitIsConnected and UnitIsConnected(unitId) then
       return true
     end
   end

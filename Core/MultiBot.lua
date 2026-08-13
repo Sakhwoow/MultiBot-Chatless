@@ -1984,6 +1984,118 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
   return true
 end
 
+function MultiBot.SyncGroupAPIToPlayers()
+  if not (MultiBot.frames and MultiBot.frames["MultiBar"]
+          and MultiBot.frames["MultiBar"].frames
+          and MultiBot.frames["MultiBar"].frames["Units"]
+          and MultiBot.addPlayer and MultiBot.addSelf) then
+    return false
+  end
+
+  local units   = MultiBot.frames["MultiBar"].frames["Units"]
+  local buttons = units.buttons or {}
+  local frames  = units.frames or {}
+
+  local playerName  = UnitName and UnitName("player") or nil
+  local raidCount   = GetNumRaidMembers and GetNumRaidMembers() or 0
+  local partyCount  = GetNumPartyMembers and GetNumPartyMembers() or 0
+  local isInRaid    = raidCount > 0
+  local memberCount = isInRaid and raidCount or partyCount
+
+  local visibleNames = {}
+  if type(playerName) == "string" and playerName ~= "" then
+    visibleNames[playerName] = true
+  end
+
+  local previousActive = {}
+  for _, activeName in ipairs(MultiBot.index.actives or {}) do
+    if type(activeName) == "string" and activeName ~= "" then
+      previousActive[string.lower(activeName)] = true
+    end
+  end
+
+  local roster = {}
+  for i = 1, memberCount do
+    local unitId = isInRaid and ("raid" .. i) or ("party" .. i)
+    local name   = UnitName and UnitName(unitId) or nil
+    if type(name) == "string" and name ~= "" and name ~= "Unknown" and name ~= playerName then
+      local classToken = nil
+      if UnitClass then local _, ct = UnitClass(unitId); classToken = ct end
+      roster[#roster + 1] = {
+        name       = name,
+        classToken = classToken or "UNKNOWN",
+        level      = UnitLevel and UnitLevel(unitId) or 0,
+        connected  = UnitIsConnected and UnitIsConnected(unitId) or false,
+        alive      = not (UnitIsDeadOrGhost and UnitIsDeadOrGhost(unitId)),
+        hpPct      = (function()
+          local hp = UnitHealth and UnitHealth(unitId) or 0
+          local mx = UnitHealthMax and UnitHealthMax(unitId) or 1
+          return mx > 0 and math.floor(hp * 100 / mx) or 0
+        end)(),
+      }
+      visibleNames[name] = true
+    end
+  end
+
+  for name, btn in pairs(buttons) do
+    if btn and btn.roster == "players" and not visibleNames[name] then
+      local f = frames[name]
+      if f then f:Hide() end
+      btn:Hide()
+      if btn.setDisable then btn.setDisable() end
+    end
+  end
+
+  MultiBot.index.players         = {}
+  MultiBot.index.classes.players = {}
+  MultiBot.index.actives         = {}
+  MultiBot.index.classes.actives = {}
+
+  if type(playerName) == "string" and playerName ~= "" and UnitClass then
+    local _, pct = UnitClass("player")
+    local sb = MultiBot.addSelf(MultiBot.toClass(pct or "UNKNOWN"), playerName)
+    if sb and sb.setDisable then sb.setDisable() end
+  end
+
+  for _, entry in ipairs(roster) do
+    local botClass = MultiBot.toClass(entry.classToken)
+    local button   = MultiBot.addPlayer(botClass, entry.name)
+    if button then
+      button._mbFavoritePlaceholder = nil
+      button.class = botClass
+      button.level = entry.level
+      button.alive = entry.alive
+      button.hpPct = entry.hpPct
+      UpdateBridgeUnitButton(button, botClass, entry.level, entry.name)
+      if MultiBot.BindUnitToggleHandlers then
+        MultiBot.BindUnitToggleHandlers(button, { requireEnabledStateOnRight = true })
+      end
+
+      if entry.connected then
+        if MultiBot.index.classes.actives[botClass] == nil then
+          MultiBot.index.classes.actives[botClass] = {}
+        end
+        table.insert(MultiBot.index.classes.actives[botClass], entry.name)
+        table.insert(MultiBot.index.actives, entry.name)
+        if button.setEnable then button.setEnable() end
+        local key = string.lower(entry.name)
+        if previousActive[key] ~= true
+            and MultiBot.bridge and MultiBot.bridge.connected
+            and MultiBot.Comm and type(MultiBot.Comm.RequestState) == "function" then
+          local req = MultiBot.Comm.RequestState(entry.name)
+          if req then button.waitFor = "BRIDGE_STATE" end
+        end
+      else
+        if button.setDisable then button.setDisable() end
+      end
+    end
+  end
+
+  if MultiBot.UpdateFavoritesIndex then MultiBot.UpdateFavoritesIndex() end
+  if MultiBot.ApplyAllBridgeStates  then MultiBot.ApplyAllBridgeStates() end
+  if MultiBot.RelayoutUnitsDisplay  then MultiBot.RelayoutUnitsDisplay() end
+  return true
+end
 
 function MultiBot.GetCachedBridgeState(name)
   if type(name) ~= "string" or name == "" then

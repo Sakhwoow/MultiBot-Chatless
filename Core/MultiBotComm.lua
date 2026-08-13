@@ -1929,8 +1929,8 @@ function Comm.ApplyRosterPayload(payload)
 
   state.roster = roster
 
-  if MultiBot.SyncGroupAPIToPlayers then
-    MultiBot.SyncGroupAPIToPlayers()
+  if MultiBot.SyncBridgeRosterToPlayers then
+    MultiBot.SyncBridgeRosterToPlayers(roster)
   end
 
   if state.connected and Comm.RequestBotDetails then

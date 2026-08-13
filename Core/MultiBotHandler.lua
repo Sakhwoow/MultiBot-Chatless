@@ -1492,8 +1492,9 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 			if event ~= "UNIT_PET" then
 				if MultiBot.TimerAfter then
 					MultiBot.TimerAfter(0.3, function()
-						if MultiBot.SyncGroupAPIToPlayers then
-							MultiBot.SyncGroupAPIToPlayers()
+						if MultiBot.Comm and MultiBot.Comm.RequestRoster
+								and MultiBot.bridge and MultiBot.bridge.connected then
+							MultiBot.Comm.RequestRoster()
 						end
 					end)
 					MultiBot.TimerAfter(0.8, function()
@@ -1501,8 +1502,9 @@ function MultiBot.HandleMultiBotEvent(event, ...)
 					end)
 					MultiBot.TimerAfter(1.2, AutoPopulateFromGroupAPI)
 				else
-					if MultiBot.SyncGroupAPIToPlayers then
-						MultiBot.SyncGroupAPIToPlayers()
+					if MultiBot.Comm and MultiBot.Comm.RequestRoster
+							and MultiBot.bridge and MultiBot.bridge.connected then
+						MultiBot.Comm.RequestRoster()
 					end
 					ReconnectExistingGroupBots(event)
 					AutoPopulateFromGroupAPI()

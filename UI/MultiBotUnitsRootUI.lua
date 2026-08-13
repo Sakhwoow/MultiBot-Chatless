@@ -311,8 +311,8 @@ local function refreshUnitsDisplay(unitsButton, requestedRoster, requestedFilter
         local bridge = MultiBot.bridge
         if bridge and bridge.roster and #bridge.roster > 0 and MultiBot.SyncBridgeRosterToPlayers then
             MultiBot.SyncBridgeRosterToPlayers(bridge.roster)
-        elseif MultiBot.SyncGroupAPIToPlayers then
-            MultiBot.SyncGroupAPIToPlayers()
+        elseif bridge and bridge.connected and MultiBot.Comm and MultiBot.Comm.RequestRoster then
+            MultiBot.Comm.RequestRoster()
         end
     end
 
@@ -623,8 +623,6 @@ local function requestRosterBootstrap(button)
         local bridge = MultiBot.bridge
         if bridge and bridge.roster and #bridge.roster > 0 and MultiBot.SyncBridgeRosterToPlayers then
             MultiBot.SyncBridgeRosterToPlayers(bridge.roster)
-        elseif MultiBot.SyncGroupAPIToPlayers then
-            MultiBot.SyncGroupAPIToPlayers()
         end
     end
 
@@ -1013,8 +1011,6 @@ function MultiBot.InitializeUnitsRootUI(tMultiBar)
     local _bridge = MultiBot.bridge
     if _bridge and _bridge.roster and #_bridge.roster > 0 and MultiBot.SyncBridgeRosterToPlayers then
         MultiBot.SyncBridgeRosterToPlayers(_bridge.roster)
-    elseif MultiBot.SyncGroupAPIToPlayers then
-        MultiBot.SyncGroupAPIToPlayers()
     end
     if MultiBot.ApplyAllBridgeStates then
         MultiBot.ApplyAllBridgeStates()

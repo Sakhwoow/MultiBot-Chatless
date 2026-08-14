@@ -1990,7 +1990,20 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
     end
   end
 
-  -- Re-add legacy-chat bots not covered by bridge ROSTER (keep them as disabled/offline)
+  if MultiBot.ProcessPendingAddClassRoster then
+    MultiBot.ProcessPendingAddClassRoster(roster)
+  end
+
+  if MultiBot.UpdateFavoritesIndex then
+    MultiBot.UpdateFavoritesIndex()
+  end
+
+  if MultiBot.ApplyAllBridgeStates then
+    MultiBot.ApplyAllBridgeStates()
+  end
+
+  -- Re-add legacy-chat bots not covered by bridge ROSTER (keep them disabled/offline).
+  -- Must run AFTER ApplyAllBridgeStates so setDisable() is not overwritten by cached state.
   for name, _ in pairs(legacyPlayers) do
     if not rosterNames[name] then
       local btn = buttons[name]
@@ -2011,18 +2024,6 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
         btn:Show()
       end
     end
-  end
-
-  if MultiBot.ProcessPendingAddClassRoster then
-    MultiBot.ProcessPendingAddClassRoster(roster)
-  end
-
-  if MultiBot.UpdateFavoritesIndex then
-    MultiBot.UpdateFavoritesIndex()
-  end
-
-  if MultiBot.ApplyAllBridgeStates then
-    MultiBot.ApplyAllBridgeStates()
   end
 
    if MultiBot.RelayoutUnitsDisplay then

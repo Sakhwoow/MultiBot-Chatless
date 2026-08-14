@@ -108,6 +108,23 @@ local function materialSummary(materials)
     return table.concat(values, "  ")
 end
 
+function EnchantUI:HasMaterialItem(itemId)
+    itemId = tonumber(itemId or 0) or 0
+    if itemId <= 0 then
+        return false
+    end
+
+    for _, entry in ipairs(self.entries or {}) do
+        for _, material in ipairs(entry.materials or {}) do
+            if tonumber(material.itemId or 0) == itemId then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
 local function getReasonText(reason)
     reason = string.upper(tostring(reason or ""))
     if reason == "" or reason == "OK" then
@@ -169,6 +186,8 @@ local function showEnchantTooltip(owner, entry)
     if not owner or not entry or not GameTooltip then
         return
     end
+    EnchantUI.tooltipOwner = owner
+    EnchantUI.tooltipEntry = entry
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     GameTooltip:SetHyperlink("spell:" .. tostring(entry.spellId or 0))
     if entry.materials and #entry.materials > 0 then
@@ -190,6 +209,14 @@ local function showEnchantTooltip(owner, entry)
         GameTooltip:AddLine(L("profession.recipes.craft.reason.MISSING_TOOLS", "Required enchanting tool missing."), 1, 0.25, 0.25, true)
     end
     GameTooltip:Show()
+end
+
+local function hideEnchantTooltip()
+    EnchantUI.tooltipOwner = nil
+    EnchantUI.tooltipEntry = nil
+    if GameTooltip then
+        GameTooltip:Hide()
+    end
 end
 
 function EnchantUI:GetFilteredEntries()
@@ -306,6 +333,9 @@ function EnchantUI:EnsureWindow()
         frame:RegisterForDrag("LeftButton")
         frame:SetScript("OnDragStart", frame.StartMoving)
         frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+        if UISpecialFrames then
+            table.insert(UISpecialFrames, "MultiBotEnchantingFrame")
+        end
         addSimpleBackdrop(frame, 0.96)
         frame.close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
         frame.close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
@@ -319,6 +349,18 @@ function EnchantUI:EnsureWindow()
     frame:Hide()
     frame.content = content or frame
     addSimpleBackdrop(frame.content, 0.90)
+
+    frame.itemInfoEventFrame = CreateFrame("Frame")
+    pcall(frame.itemInfoEventFrame.RegisterEvent, frame.itemInfoEventFrame, "GET_ITEM_INFO_RECEIVED")
+    frame.itemInfoEventFrame:SetScript("OnEvent", function(_, _, itemId)
+        local receivedItemId = tonumber(itemId or arg1 or 0) or 0
+        if frame:IsShown() and EnchantUI:HasMaterialItem(receivedItemId) then
+            EnchantUI:Render()
+            if EnchantUI.tooltipOwner and EnchantUI.tooltipEntry then
+                showEnchantTooltip(EnchantUI.tooltipOwner, EnchantUI.tooltipEntry)
+            end
+        end
+    end)
 
     frame.status = frame.content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     frame.status:SetPoint("TOPLEFT", frame.content, "TOPLEFT", 10, -10)
@@ -391,13 +433,13 @@ function EnchantUI:EnsureWindow()
             if button.entry then showEnchantTooltip(button, button.entry) end
         end)
         row.hit:SetScript("OnLeave", function()
-            if GameTooltip then GameTooltip:Hide() end
+            hideEnchantTooltip()
         end)
         row.icon:SetScript("OnEnter", function(button)
             if button.entry then showEnchantTooltip(button, button.entry) end
         end)
         row.icon:SetScript("OnLeave", function()
-            if GameTooltip then GameTooltip:Hide() end
+            hideEnchantTooltip()
         end)
         row.icon:SetScript("OnClick", function(button)
             if button.entry then EnchantUI:SelectEntry(button.entry) end
@@ -458,14 +500,21 @@ function EnchantUI:RequestList()
     if not self.botName or self.botName == "" or not MultiBot.Comm or not MultiBot.Comm.RequestEnchantTrade then
         return false
     end
+    if self.listToken then
+        return false
+    end
+
     local frame = self:EnsureWindow()
     frame.status:SetText(L("profession.recipes.loading", "Loading..."))
     local token = MultiBot.Comm.RequestEnchantTrade(self.botName)
     if not token then
+        setButtonEnabled(frame.refresh, true)
         frame.status:SetText(L("enchant.trade.status.service_unavailable", "Enchanting service is not available."))
         return false
     end
+
     self.listToken = token
+    setButtonEnabled(frame.refresh, false)
     return true
 end
 
@@ -514,6 +563,9 @@ function EnchantUI:Open(botName)
     self.selectedEntry = nil
     self.selectedSpellId = nil
     self.pendingToken = nil
+    self.listToken = nil
+    self.tooltipOwner = nil
+    self.tooltipEntry = nil
     self.page = 1
     self.searchText = ""
 
@@ -526,6 +578,7 @@ function EnchantUI:Open(botName)
     if frame.search then frame.search:SetText("") end
     frame:Show()
     self:Render()
+    setButtonEnabled(frame.refresh, true)
 
     if TradeFrame and TradeFrame.IsShown and not TradeFrame:IsShown() and InitiateTrade then
         InitiateTrade(botName)
@@ -582,21 +635,28 @@ function MultiBot.OpenBotEnchanting(botName, _sourceButton)
 end
 
 function MultiBot.OnBridgeEnchantTradeList(botName, entries, meta)
+    local token = meta and tostring(meta.token or "") or ""
     if not EnchantUI.botName or not sameBotName(EnchantUI.botName, botName) then
         return
     end
-    EnchantUI.entries = type(entries) == "table" and entries or {}
+    if not EnchantUI.listToken or token == "" or tostring(EnchantUI.listToken) ~= token then
+        return
+    end
+
     EnchantUI.listToken = nil
-    EnchantUI.page = 1
-    EnchantUI.selectedEntry = nil
-    EnchantUI.selectedSpellId = nil
 
     local frame = EnchantUI:EnsureWindow()
+    setButtonEnabled(frame.refresh, true)
     local status = meta and tostring(meta.status or "") or ""
     local reason = meta and tostring(meta.reason or "") or ""
     if status ~= "OK" then
         frame.status:SetText(getReasonText(reason ~= "" and reason or status))
     else
+        EnchantUI.entries = type(entries) == "table" and entries or {}
+        EnchantUI.page = 1
+        EnchantUI.selectedEntry = nil
+        EnchantUI.selectedSpellId = nil
+
         local skillValue = tonumber(meta and meta.skillValue or 0) or 0
         local maxSkill = tonumber(meta and meta.maxSkill or 0) or 0
         frame.status:SetText(string.format(L("enchant.trade.count", "Enchantments: %d - Skill: %d/%d"), #EnchantUI.entries, skillValue, maxSkill))
@@ -605,15 +665,17 @@ function MultiBot.OnBridgeEnchantTradeList(botName, entries, meta)
 end
 
 function MultiBot.OnBridgeEnchantTradeResult(botName, _spellId, status, reason, command)
-    if not EnchantUI.botName or not sameBotName(EnchantUI.botName, botName) then
+    local commandToken = command and tostring(command.token or "") or ""
+    if not EnchantUI.pendingToken or commandToken == "" or tostring(EnchantUI.pendingToken) ~= commandToken then
         return
     end
-    if EnchantUI.pendingToken and command and command.token and EnchantUI.pendingToken ~= command.token then
+    if not EnchantUI.botName or not sameBotName(EnchantUI.botName, botName) then
         return
     end
 
     EnchantUI.pendingToken = nil
     local frame = EnchantUI:EnsureWindow()
+    EnchantUI:UpdateApplyButton()
     if tostring(status or "") == "OK" then
         frame.status:SetText(L("enchant.trade.status.started", "Enchanting started. Complete the trade normally."))
         safeDelay(ENCHANT_REFRESH_DELAY, function()
@@ -623,6 +685,5 @@ function MultiBot.OnBridgeEnchantTradeResult(botName, _spellId, status, reason, 
         end)
     else
         frame.status:SetText(getReasonText(reason))
-        EnchantUI:UpdateApplyButton()
     end
 end

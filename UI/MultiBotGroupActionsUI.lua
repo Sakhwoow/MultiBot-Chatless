@@ -5,8 +5,9 @@ MultiBot.GroupActionsUI = GroupActionsUI
 
 local AceGUI = LibStub and LibStub("AceGUI-3.0", true)
 local ROLL_MENU_Y = 102
-local ROLL_WINDOW_WIDTH = 390
+local ROLL_WINDOW_WIDTH = 240
 local ROLL_WINDOW_HEIGHT = 245
+local ROLL_CONTENT_SIDE_PADDING = 10
 local ROLL_ITEM_LINK_MAX = 160
 
 local MENU_BUTTONS = {
@@ -30,6 +31,46 @@ local function trim(value)
     end
 
     return value:gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function addRollBackdrop(window)
+    if not window or not window.frame or not window.content then
+        return
+    end
+
+    local backdrop = CreateFrame("Frame", nil, window.frame)
+    backdrop:SetPoint("TOPLEFT", window.frame, "TOPLEFT", 12, -32)
+    backdrop:SetPoint("BOTTOMRIGHT", window.frame, "BOTTOMRIGHT", -12, 13)
+
+    if backdrop.SetFrameLevel and window.frame.GetFrameLevel then
+        backdrop:SetFrameLevel(window.frame:GetFrameLevel() + 1)
+    end
+    if window.content.SetFrameLevel and backdrop.GetFrameLevel then
+        window.content:SetFrameLevel(backdrop:GetFrameLevel() + 1)
+    end
+
+    backdrop:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+
+    if backdrop.SetBackdropColor then
+        backdrop:SetBackdropColor(0.06, 0.06, 0.08, 0.90)
+    end
+
+    if backdrop.SetBackdropBorderColor then
+        backdrop:SetBackdropBorderColor(0.35, 0.35, 0.35, 0.95)
+    end
+
+    window.content:ClearAllPoints()
+    window.content:SetPoint("TOPLEFT", window.frame, "TOPLEFT", 12 + ROLL_CONTENT_SIDE_PADDING, -42)
+    window.content:SetPoint("BOTTOMRIGHT", window.frame, "BOTTOMRIGHT", -(12 + ROLL_CONTENT_SIDE_PADDING), 13)
+    window.content.width = math.max(0, ROLL_WINDOW_WIDTH - (2 * (12 + ROLL_CONTENT_SIDE_PADDING)))
+    window.rollBackdrop = backdrop
 end
 
 local function createGroupCommand(buttonHost, definition)
@@ -130,6 +171,8 @@ function GroupActionsUI:EnsureRollWindow()
     window:SetHeight(ROLL_WINDOW_HEIGHT)
     window:EnableResize(false)
     window:SetLayout("Flow")
+
+    addRollBackdrop(window)
 
     local strataLevel = MultiBot.GetGlobalStrataLevel and MultiBot.GetGlobalStrataLevel()
     if strataLevel and window.frame then

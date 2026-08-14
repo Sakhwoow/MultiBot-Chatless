@@ -4658,6 +4658,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       active.maxSkill = maxSkill
       active.items = {}
       active.itemBySpellId = {}
+      active.integrityError = nil
     end
 
     return true
@@ -4681,16 +4682,20 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
     local active = getActiveEnchantTradeRequest(botName, token)
     if active and spellId > 0 then
-      local entry = {
-        spellId = spellId,
-        difficulty = difficulty,
-        available = available ~= 0 and 1 or 0,
-        materials = {},
-        hasTools = hasTools ~= 0 and 1 or 0,
-      }
-      table.insert(active.items, entry)
       active.itemBySpellId = active.itemBySpellId or {}
-      active.itemBySpellId[spellId] = entry
+      if active.itemBySpellId[spellId] then
+        active.integrityError = "DUPLICATE_SPELL_ID"
+      else
+        local entry = {
+          spellId = spellId,
+          difficulty = difficulty,
+          available = available ~= 0 and 1 or 0,
+          materials = {},
+          hasTools = hasTools ~= 0 and 1 or 0,
+        }
+        table.insert(active.items, entry)
+        active.itemBySpellId[spellId] = entry
+      end
     end
 
     return true
@@ -4745,13 +4750,31 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       active.status = status
       active.reason = reason
       active.count = count
+
       local items = active.items or {}
-      local key = string.lower(botName)
-      state.enchantTradeLists[key] = items
+      local deliveredItems = items
+      local integrityError = active.integrityError
+
+      if status == "OK" and not integrityError and #items ~= count then
+        integrityError = "COUNT_MISMATCH"
+      end
+
+      if integrityError then
+        status = "ERR"
+        reason = "TRY_AGAIN"
+        active.status = status
+        active.reason = reason
+        state.lastError = "ENCHANT_TRADE_" .. integrityError
+        deliveredItems = {}
+      elseif status == "OK" then
+        local key = string.lower(botName)
+        state.enchantTradeLists[key] = items
+      end
+
       state.enchantTradeActive = nil
 
       if MultiBot.OnBridgeEnchantTradeList then
-        MultiBot.OnBridgeEnchantTradeList(botName, items, {
+        MultiBot.OnBridgeEnchantTradeList(botName, deliveredItems, {
           token = token,
           status = status,
           reason = reason,

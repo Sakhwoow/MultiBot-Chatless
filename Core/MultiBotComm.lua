@@ -1872,7 +1872,21 @@ function Comm.MarkDisconnected(reason)
   state.bankActive = nil
   state.guildBankActive = nil
   state.inventoryItemActions = {}
+
+  local pendingRollTokens = {}
+  for token in pairs(state.groupRollCommands or {}) do
+    pendingRollTokens[#pendingRollTokens + 1] = token
+  end
+  for _, token in ipairs(pendingRollTokens) do
+    finishGroupRollCommand(token, {
+      status = "error",
+      matched = 0,
+      invoked = 0,
+      reason = "DISCONNECTED",
+    })
+  end
   state.groupRollCommands = {}
+
   state.spellbookActive = nil
   state.botSkillActive = nil
   state.botReputationActive = nil
@@ -4874,7 +4888,6 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
-  state.groupRollCommands = {}
   state.strategyMutationCommands = {}
   state.details = {}
   state.stats = {}

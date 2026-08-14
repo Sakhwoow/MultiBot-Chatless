@@ -666,6 +666,40 @@ local function onUnitsButtonRightClick(button)
     end)
 end
 
+local function massRemoveGroupBots()
+    local playerName = UnitName("player")
+    local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
+    local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
+    local removed = 0
+    if raidCount > 0 then
+        for i = 1, raidCount do
+            local n = UnitName("raid" .. i)
+            if n and n ~= "" and n ~= playerName then
+                SendChatMessage(".playerbot bot remove " .. n, "SAY")
+                removed = removed + 1
+            end
+        end
+    elseif partyCount > 0 then
+        for i = 1, partyCount do
+            local n = UnitName("party" .. i)
+            if n and n ~= "" then
+                SendChatMessage(".playerbot bot remove " .. n, "SAY")
+                removed = removed + 1
+            end
+        end
+    end
+    if removed > 0 then
+        local units = MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames["Units"]
+        if units then
+            for name, btn in pairs(units.buttons) do
+                if btn and btn.roster == "players" and name ~= playerName then
+                    if btn.setDisable then btn.setDisable() end
+                end
+            end
+        end
+    end
+end
+
 local function createFactionBanner(unitsFrame)
     local allianceFrame = unitsFrame.addFrame("Alliance", 0, -34, 32)
     allianceFrame:Show()
@@ -675,33 +709,7 @@ local function createFactionBanner(unitsFrame)
 
     local button = allianceFrame.addButton("FactionBanner", 0, 0, bannerIcon, MultiBot.L("tips.units.alliance"))
     button:doShow()
-    button.doRight = function()
-        local units = MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames["Units"]
-        if not units then return end
-        local groupNames = {}
-        local raidCount = (GetNumRaidMembers and GetNumRaidMembers()) or 0
-        local partyCount = (GetNumPartyMembers and GetNumPartyMembers()) or 0
-        if raidCount > 0 then
-            for i = 1, raidCount do
-                local n = UnitName("raid" .. i)
-                if n and n ~= "" then groupNames[n] = true end
-            end
-        elseif partyCount > 0 then
-            for i = 1, partyCount do
-                local n = UnitName("party" .. i)
-                if n and n ~= "" then groupNames[n] = true end
-            end
-        end
-        local playerName = UnitName("player")
-        for name, btn in pairs(units.buttons) do
-            if btn and btn.roster == "players" and name ~= playerName then
-                if btn.state or groupNames[name] then
-                    SendChatMessage(".playerbot bot remove " .. name, "SAY")
-                    if btn.setDisable then btn.setDisable() end
-                end
-            end
-        end
-    end
+    button.doRight = massRemoveGroupBots
     button.doLeft = function()
         local units = MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames["Units"]
         if not units then return end
@@ -927,30 +935,7 @@ local function createInviteControls(controlFrame)
             MultiBot.auto.invite = false
             MultiBot.timer.invite.needs = 0
             MultiBot.timer.invite.index = 1
-            local units = MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames["Units"]
-            if not units then return end
-            local playerName = UnitName("player")
-            local groupNames = {}
-            if raidCount > 0 then
-                for i = 1, raidCount do
-                    local n = UnitName("raid" .. i)
-                    if n and n ~= "" then groupNames[n] = true end
-                end
-            else
-                for i = 1, partyCount do
-                    local n = UnitName("party" .. i)
-                    if n and n ~= "" then groupNames[n] = true end
-                end
-            end
-            local playerName2 = playerName
-            for name, btn in pairs(units.buttons) do
-                if btn and btn.roster == "players" and name ~= playerName2 then
-                    if btn.state or groupNames[name] then
-                        SendChatMessage(".playerbot bot remove " .. name, "SAY")
-                        if btn.setDisable then btn.setDisable() end
-                    end
-                end
-            end
+            massRemoveGroupBots()
             return
         end
         MultiBot.timer.invite.roster = MultiBot.frames["MultiBar"].buttons[UNITS_BUTTON_NAME].roster

@@ -79,24 +79,35 @@ function GroupActionsUI:SetRollStatus(text)
     end
 end
 
-function GroupActionsUI:RunRoll(itemLink)
+function GroupActionsUI:RunRoll(itemLink, requireItem)
+    if self.rollPending then
+        return false
+    end
+
     if not MultiBot.Comm or type(MultiBot.Comm.RunGroupRoll) ~= "function" then
         self:SetRollStatus(MultiBot.L("roll.status.bridge_unavailable"))
         return false
     end
 
     itemLink = trim(itemLink or "")
+    if requireItem and itemLink == "" then
+        self:SetRollStatus(MultiBot.L("roll.status.bad_item"))
+        return false
+    end
     if itemLink ~= "" and (string.len(itemLink) > ROLL_ITEM_LINK_MAX or not string.find(itemLink, "|Hitem:", 1, true)) then
         self:SetRollStatus(MultiBot.L("roll.status.bad_item"))
         return false
     end
 
+    self.rollPending = true
     self:SetRollStatus(MultiBot.L("roll.status.sending"))
     local token = MultiBot.Comm.RunGroupRoll(itemLink, function(result)
+        GroupActionsUI.rollPending = false
         GroupActionsUI:SetRollStatus(getRollStatusText(result))
     end)
 
     if not token then
+        self.rollPending = false
         self:SetRollStatus(MultiBot.L("roll.status.bridge_unavailable"))
         return false
     end
@@ -166,7 +177,7 @@ function GroupActionsUI:EnsureRollWindow()
     itemButton:SetText(MultiBot.L("roll.window.item_button"))
     itemButton:SetFullWidth(true)
     itemButton:SetCallback("OnClick", function()
-        GroupActionsUI:RunRoll(itemEdit:GetText() or "")
+        GroupActionsUI:RunRoll(itemEdit:GetText() or "", true)
     end)
     window:AddChild(itemButton)
 
@@ -194,7 +205,9 @@ function GroupActionsUI:ShowRollWindow()
     window:SetTitle(MultiBot.L("roll.window.title"))
     window.frame:Show()
     window.frame:Raise()
-    self:SetRollStatus(MultiBot.L("roll.status.ready"))
+    if not self.rollPending then
+        self:SetRollStatus(MultiBot.L("roll.status.ready"))
+    end
 
     if self.rollItemEdit and self.rollItemEdit.editbox then
         self.rollItemEdit.editbox:SetFocus()

@@ -251,6 +251,19 @@ MultiBot.addEvery = function(pFrame, pCombat, pNormal)
 		MultiBot.ShowHideSwitch(combatFrame)
 	end
 
+	local enchantButton = pFrame.addButton("Enchant", 484, 0, "trade_engraving", MultiBot.L("lootmaster.profession.enchanting", "Enchanting"))
+	enchantButton.setDisable()
+	enchantButton.doHide()
+	enchantButton.doLeft = function(pButton)
+		if MultiBot.OpenBotEnchanting then
+			MultiBot.OpenBotEnchanting(pButton.getName(), pButton)
+		end
+	end
+	if MultiBot.IsBotEnchantingServiceAvailable and MultiBot.IsBotEnchantingServiceAvailable(botName) then
+		enchantButton.setEnable()
+		enchantButton.doShow()
+	end
+
 	addBotCombatButton(combatFrame, "CombatFocus", -28, 84, "Ability_Hunter_MasterMarksman", MultiBot.L("tips.every.combatfocus"), "co +focus", "co -focus")
 	addBotCombatButton(combatFrame, "CombatAoe", 0, 84, "Spell_Fire_SelfDestruct", MultiBot.L("tips.every.combataoe"), "co +aoe", "co -aoe")
 	addBotCombatButton(combatFrame, "CombatDpsAssist", -28, 56, "Ability_Hunter_Assassinate2", MultiBot.L("tips.every.combatdpsassist"), "co +dps assist", "co -dps assist")

@@ -1,19 +1,29 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
-Statut : roadmap active issue de l'audit initial v1c du 1er août 2026.  
-Dernière mise à jour : 08/08/2026 — validation runtime du lot Warlock chatless, diagnostic TEMP_ENCHANT et bascule Firestone/Spellstone bridge-only.
+Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état post-merge du 14 août 2026.
+Dernière mise à jour : 14/08/2026 — service d'enchantement d'objet `ENCHANT_TRADE_V1` implémenté et validé en jeu, UI 440 px/i18n validées ; prochain chantier normal fixé à l'ajout/retrait d'items précis dans les règles de loot.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
 
+Audit de synchronisation : `audit-multibot-roadmap-next-item-v1-2026-08-14-143927`.
+
 - Addon : `L:\ChromieCraft_3.3.5a\Interface\AddOns\MultiBot`
+  - branche `main` ;
+  - HEAD et `origin/main` : `106074c3c93f80812f73af27e746860c7c8a4dcf` ;
+  - merge PR #61 : **Add chatless group Roll UI** ;
+  - worktree propre au début et à la fin de l'audit.
 - Bridge : `L:\AC_PB\azerothcore-wotlk\modules\mod-multibot-bridge`
-- Playerbots : `L:\AC_PB\azerothcore-wotlk\modules\mod-playerbots` — lecture seule stricte
-- Addon : baseline post-PR #51 auditée, dépôt Git propre, branche `main`, commit `270911305acf3e806d389712a34a9433131db981`
-- AzerothCore : dépôt Git propre pour les modules bridge/Playerbots audités, branche `Playerbot`, commit `092e9ba6ff8dc6d861dddd1f31baa9d404381a85`
-- Bridge : 7 fichiers, logique principale concentrée dans `src/MultiBotBridge.cpp`
-- Communication actuelle : bridge-first pour les principaux rafraîchissements UI ; l'audit final du 07/08/2026 relève encore 159 lignes `SendChatMessage` à classifier, dont des reliquats `co/nc` directs dans des contrôles spécialisés.
-- Fallback automatique legacy désactivé par défaut : `MultiBot.allowLegacyChatFallback = false`.
+  - branche `main` ;
+  - HEAD et `origin/main` : `210bd1f4f6597fe4f0691ec729ec4904ebe2d463` ;
+  - merge PR #26 : **Add chatless group Roll support** ;
+  - worktree propre au début et à la fin de l'audit.
+- Playerbots : `L:\AC_PB\azerothcore-wotlk\modules\mod-playerbots`
+  - branche `master`, commit `a7b885d27134466dbc1c91d39b8241ea725a1bbb` ;
+  - **lecture seule stricte** ; invariant avant/après audit : `OK`.
+- AzerothCore : branche `Playerbot`, commit `092e9ba6ff8dc6d861dddd1f31baa9d404381a85`, worktree propre pendant l'audit.
+- Communication actuelle : bridge-first pour les principaux rafraîchissements UI et pour plusieurs actions d'écriture explicitement bornées ; des occurrences `SendChatMessage` subsistent et doivent être classées/migrées famille par famille.
+- Fallback automatique legacy désactivé par défaut : `MultiBot.allowLegacyChatFallback = false`. Certains chemins de compatibilité historiques restent toutefois explicitement documentés jusqu'à leur migration ou leur suppression validée.
 
 ## Règles de progression
 
@@ -25,7 +35,7 @@ Audit → Analyse → Proposition → Validation utilisateur → Patch minimal �
 - Rollback et hashes obligatoires.
 - Ne jamais ajouter d'exécuteur bridge générique acceptant une commande Playerbots arbitraire.
 
-## Contribution externe Jellypowered — AUDIT AUTORISÉ, INTÉGRATION NON COMMENCÉE
+## Contribution externe Jellypowered — RÉFÉRENCE CONSERVÉE, ATTRIBUTION OBLIGATOIRE
 
 Source reçue le 04/08/2026 :
 
@@ -44,7 +54,7 @@ Décision validée :
 - ne jamais modifier `mod-playerbots` ;
 - ne marquer aucune fonction comme intégrée avant vérification, compilation, tests en jeu et validation explicite de l'utilisateur.
 
-Fonctions candidates, toutes encore au statut `À AUDITER` :
+Fonctions candidates identifiées dans la contribution lors de l'audit initial ; leur statut projet actuel doit être lu dans les phases et jalons ci-dessous, pas déduit de cette liste :
 
 1. helpers de parsing numérique strict et réponses structurées ;
 2. inventaire détaillé `INV_BAG`, `INV_ITEM_LOC`, `INV_EQUIP_LOC` ;
@@ -74,7 +84,7 @@ Politique de tests :
 - les tests exhaustifs transversaux de toutes les fonctions pourront être exécutés vers la fin du projet ;
 - ce report des tests exhaustifs ne permet pas de déclarer une fonction validée avant ses propres tests ciblés.
 
-Statut de reprise : contribution conservée pour un audit/intégration ultérieurs. La prochaine étape immédiate du projet est la migration des reliquats UI `co/nc` encore directs, puis la clôture de la matrice runtime finale STATE/stratégies. L'audit Jellypowered reprendra ensuite selon l'ordre validé.
+Statut de reprise : contribution conservée comme source de référence. Les fonctions du projet déjà mergées sont suivies par leurs audits, patches et PR propres ; ce document ne doit pas déduire leur provenance sans preuve. Toute reprise future issue de cette contribution doit conserver l'attribution prévue ci-dessus et rester soumise au protocole Audit → Validation → Patch → Tests.
 
 ## Phase 0 — Assainissement documentaire — TERMINÉE
 
@@ -170,41 +180,58 @@ Preuve d'audit final statique :
 
 Reste à terminer avant de fermer définitivement ce bloc :
 
-- le lot Warlock Stones/Soulstones/Pets/Curses est validé au 08/08/2026 et ne fait plus partie des reliquats `co/nc` prioritaires ;
+- le lot Warlock Stones/Soulstones/Pets/Curses est validé pour sa migration chatless et ne fait plus partie des reliquats `co/nc` prioritaires ;
+- le comportement sans fallback silencieux des mutations stratégies a été durci et mergé après cette baseline intermédiaire ;
 - exécuter/consolider la matrice runtime finale : zéro/un/plusieurs bots, listes longues, fragment manquant/dupliqué/désordonné, réponse tardive, timeouts, déconnexion en cours de transaction, mutations valides/invalides, bot absent, plusieurs bots, smoke test toutes classes, zéro erreur Lua, contrôle chat et logs ;
 - classifier puis migrer les autres familles legacy réellement automatiques avant de déclarer le projet entièrement chatless.
 
-## Validation livrée — Sélecteurs Warlock chatless + Stones — VALIDÉE LE 08/08/2026
+## Validation livrée — Sélecteurs Warlock chatless + Stones — MIGRATION CHATLESS VALIDÉE, RELIQUATS SUSPENDUS
 
-Périmètre addon validé :
+Périmètre validé et mergé :
 
-- les sélecteurs Warlock Stones, Soulstones, Pets et Curses ne contiennent plus de `SendChatMessage` direct pour leurs mutations `co/nc` ; ils passent par `MultiBot.ActionToTarget()` puis `STRATEGY_MUTATION_V1` / `RUN~STRATEGY` lorsque le bridge est disponible ;
-- `MultiBot.ActionToTarget()` distingue désormais le transport `bridge` du fallback `chat` ; avec le bridge, les sélecteurs n'appliquent plus d'état local optimiste et attendent l'état serveur autoritatif ; le fallback chat conserve son comportement immédiat de compatibilité ;
-- les contrôles Warlock invalides `dps` et `dps debuff` ont été retirés, le placeholder Buff désactivé a été supprimé et le layout des contrôles a été compacté ;
-- les quatre avertissements LuaLint ciblés sur les variables `action` ont été corrigés sans modifier le comportement.
+- les sélecteurs Warlock Stones, Soulstones, Pets et Curses utilisent le transport structuré `STRATEGY_MUTATION_V1` / `RUN~STRATEGY` lorsque le bridge est disponible ;
+- le chemin bridge attend l'état serveur autoritatif au lieu de valider localement une mutation avant l'ACK ;
+- les contrôles Warlock invalides `dps` et `dps debuff` ainsi que le placeholder Buff désactivé ont été retirés et le layout a été compacté ;
+- le bridge contient le mécanisme de bascule Firestone/Spellstone et l'endpoint diagnostique à la demande `GET~WEAPON_ENCHANT` / `WEAPON_ENCHANT` ;
+- aucun fichier de `mod-playerbots` n'est modifié.
 
-Diagnostic TEMP_ENCHANT validé :
+Décision de roadmap au 14/08/2026 :
 
-- `/mbdebug enchant [bot]` envoie à la demande `GET~WEAPON_ENCHANT` et affiche la réponse structurée `WEAPON_ENCHANT` ;
-- le bridge lit l'item, l'ID de `TEMP_ENCHANTMENT_SLOT` et sa durée sur main-hand/off-hand ;
-- l'endpoint est limité au bot visible et contrôlable, conserve `CheckLevelFor(...)`, et applique un rate-limit de 500 ms par requester ;
-- aucun polling automatique n'est introduit et `mod-playerbots` n'est pas modifié.
+- la **vérification réelle finale du `TEMP_ENCHANTMENT_SLOT` Firestone/Spellstone** reste un chantier suspendu à reprendre seulement à la fin de la roadmap normale ;
+- les **quatre warnings LuaLint restants dans `Strategies/MultiBotWarlock.lua`** restent également suspendus ;
+- ces reliquats ne doivent pas interrompre le chantier suivant de la Phase 5.
 
-Cause et correction Firestone/Spellstone :
+## Synchronisation post-merge — État livré au 14/08/2026
 
-- l'audit Playerbots en lecture seule a confirmé que `ItemForSpellValue` et `UseItemAction::UseItem()` refusent de cibler une arme dont `TEMP_ENCHANTMENT_SLOT` est déjà occupé ; la stratégie peut donc changer sans remplacer la pierre déjà appliquée ;
-- le correctif reste dans `mod-multibot-bridge` : uniquement pour un Warlock, en `BOT_STATE_NON_COMBAT`, lors d'un vrai switch exclusif `firestone` ↔ `spellstone` ;
-- le bridge découvre dynamiquement les enchant IDs des Firestone/Spellstone portées par le bot, refuse d'effacer un enchantement temporaire non reconnu, retire proprement l'ancien enchantement reconnu, puis réutilise l'action Playerbots existante avec `DoSpecificAction()` ;
-- aucun ID Firestone/Spellstone n'est hardcodé dans le correctif et aucun fichier de `mod-playerbots` n'est modifié.
+Les jalons suivants, postérieurs à la mise à jour du 08/08, sont présents dans les branches `main` auditées :
 
-Preuves runtime :
+- mutations stratégies : suppression du fallback chat silencieux lorsque le chemin structuré est requis ;
+- Outfits : transport bridge-first et négociation `OUTFIT_V1` ;
+- inventaire : lecture/rafraîchissement natifs via `INVENTORY_V1` ;
+- banque, banque de guilde et achat vendeur : durcissements serveur des actions `ITEM_ACTION` ;
+- vente inventaire `SELL_VENDOR` : bridge-first lorsque `INVENTORY_BULK_SELL_V1` est négocié ; le fallback legacy de compatibilité demeure hors chemin normal ;
+- `OPEN_ITEMS` : bridge-first via `INVENTORY_OPEN_V1`, avec traitement résiduel borné côté serveur ;
+- `GROUP ROLL` : bridge-first via `GROUP_ROLL_V1`, avec mode normal et mode item, filtrage aux bots visibles/contrôlables du groupe, rate-limit serveur et ACK structuré.
 
-- compilation Visual Studio `RelWithDebInfo x64` : 3 projets réussis, 0 échec ; worldserver démarré sans erreur bridge ;
-- Apha, Spellstone → Firestone : `TEMP_ENCHANTMENT_SLOT` `3620` → `3614`, durée finale `3600000 ms`, utilisation réelle de Grand Firestone observée ;
-- Apha, Firestone → Spellstone : `TEMP_ENCHANTMENT_SLOT` `3614` → `3620`, durée finale `3600000 ms`, utilisation réelle de Grand Spellstone observée ;
-- audit final : `audit-multibot-warlock-stone-force-switch-final-v1-2026-08-08-160400-2026-08-08-160706.zip`, SHA-256 `C0025FCAC7817711B0D5493EA3349B5F57A3AA620C260E76F59E1CAA92F7EA1A` ;
-- archivage patch : `patch-multibot-warlock-stone-force-switch-v1b-2026-08-08-154300-results-2026-08-08-162451.zip`, SHA-256 `8FABF24B50EA459EF6C7EE4A0D0BE21CFB251D1C7DEF6505C7C483BF43141C5B` ;
-- `mod-playerbots` reste strictement en lecture seule.
+Jalons de merge principaux :
+
+- Addon PR #58 — **Migrate inventory Sell Vendor to the bridge** ;
+- Bridge PR #24 — **Add safe bridge-first SELL_VENDOR inventory action** ;
+- Addon PR #60 — **Add bridge-first OPEN_ITEMS inventory action** ;
+- Bridge PR #25 — **Add residual auto-safe OPEN_ITEMS handling** ;
+- Addon PR #61 — **Add chatless group Roll UI** — merge `106074c3c93f80812f73af27e746860c7c8a4dcf` ;
+- Bridge PR #26 — **Add chatless group Roll support** — merge `210bd1f4f6597fe4f0691ec729ec4904ebe2d463`.
+
+Validation `GROUP ROLL` :
+
+- roll normal 0–100 : OK ;
+- roll avec objet par Shift+clic : OK ;
+- seuls les bots éligibles au contexte Playerbots invoqué participent au roll item ;
+- aucun whisper/chat parasite sur le workflow ;
+- protection contre double envoi et refus d'un item vide/invalide ;
+- pending nettoyé sur déconnexion/changement de monde ;
+- UI finale validée : `240x245`, fond opaque style inventaire, padding horizontal `10 px`, padding vertical haut `10 px` ;
+- compilation Bridge déjà validée sans erreur.
 
 ## Phase 1 — Baseline de compilation et tests de non-régression
 
@@ -291,22 +318,44 @@ Avant chaque migration, classer l'occurrence `SendChatMessage` comme :
 - mécanisme UI à migrer ;
 - code mort à supprimer.
 
-Ordre recommandé :
+Ordre recommandé et état réel :
 
-1. **Formations — application par clic gauche : VALIDÉE** via `RUN~FORMATION~GROUP` par `patch-multibot-formation-chatless-v1c-2026-08-01-181300`.
-2. **Consultation de la formation actuelle par clic droit : VALIDÉE** via `GET~FORMATIONS~GROUP`, `FORMATIONS_BEGIN/ITEM/END` et un tooltip local traduit.
-3. **Infrastructure mutations stratégies `co/nc` : VALIDÉE STATIQUEMENT** via `STRATEGY_MUTATION_V1`, `RUN~STRATEGY`, `STRATEGY_ACK`, timeouts, limites et diagnostics explicites.
-4. **Sélecteurs Warlock Stones/Soulstones/Pets/Curses : VALIDÉS** — mutations via `STRATEGY_MUTATION_V1` / `RUN~STRATEGY`, état UI autoritatif côté bridge et bascule réelle Firestone/Spellstone validée sans modification de Playerbots.
-5. `s *` — vente générale bridge-first.
-6. `s vendor` — vente vendeur bridge-first, sans whisper item par item.
-7. `open items` — ouverture de conteneurs bridge-first.
-8. `roll` et `roll [item]`.
-9. Enchantement d'objet, après validation du flux trade/cast disponible sans modification de Playerbots.
-10. Ajout/retrait d'items précis dans les règles de loot.
-11. Décision sur `Quest`/`Skill` versus `Disenchant`, sans inventer de stratégie absente de Playerbots.
-12. Ordres collectifs `follow`, `attack`, `stay` seulement après validation manuelle exacte des sélecteurs Playerbots ; ne pas réintroduire `RUN~ORDER` générique.
+1. **Formations — application par clic gauche : TERMINÉ / VALIDÉ** via `RUN~FORMATION~GROUP`.
+2. **Consultation de la formation actuelle par clic droit : TERMINÉ / VALIDÉ** via `GET~FORMATIONS~GROUP`, `FORMATIONS_BEGIN/ITEM/END` et tooltip local traduit.
+3. **Infrastructure mutations stratégies `co/nc` : TERMINÉE pour les chemins migrés** via `STRATEGY_MUTATION_V1`, `RUN~STRATEGY`, `STRATEGY_ACK`, timeouts, limites et diagnostics explicites.
+4. **Sélecteurs Warlock Stones/Soulstones/Pets/Curses : TERMINÉS pour la migration chatless validée**. Les reliquats TEMP_ENCHANT réel et LuaLint sont suspendus et ne bloquent pas la roadmap normale.
+5. **`s *` / `SELL_GREY` : SUSPENDU** — le chemin actuel existe, mais le chantier `SELL_GREY / sell-grey core API / bridge-first` est explicitement reporté à la fin de la roadmap.
+6. **`s vendor` / `SELL_VENDOR` : TERMINÉ pour le chemin bridge-first inventaire** — `INVENTORY_BULK_SELL_V1`, validation serveur et résultat structuré ; fallback legacy de compatibilité conservé si la capacité n'est pas disponible.
+7. **`open items` / `OPEN_ITEMS` : TERMINÉ / VALIDÉ / MERGÉ** — `INVENTORY_OPEN_V1`, Addon PR #60, Bridge PR #25.
+8. **`roll` et `roll [item]` : TERMINÉ / VALIDÉ / MERGÉ** — `GROUP_ROLL_V1`, Addon PR #61, Bridge PR #26.
+9. **Enchantement d'objet : TERMINÉ / VALIDÉ EN JEU — PR EN COURS (Addon #63 / Bridge #27)** — `ENCHANT_TRADE_V1`, UI dédiée aux enchanteurs, liste des enchantements réellement connus, composants/outils, Trade WoW natif via le slot « ne sera pas échangé », exécution par ID de sort numérique validé côté bridge, sans exécuteur générique de cast/chat ; layout 440 px et i18n des 8 locales validés.
+10. **PROCHAIN CHANTIER NORMAL — Ajout/retrait d'items précis dans les règles de loot.**
+11. **À FAIRE — Décision sur `Quest`/`Skill` versus `Disenchant`**, sans inventer de stratégie absente de Playerbots.
+12. **À FAIRE — Ordres collectifs `follow`, `attack`, `stay`**, seulement après validation manuelle exacte des sélecteurs Playerbots ; ne pas réintroduire `RUN~ORDER` générique.
 
 Les commandes informatives `who`, `co ?`, `nc ?` et `ss ?` restent manuelles tant qu'aucune UI structurée ne les remplace. Les mutations UI automatiques `co/nc`, en revanche, doivent passer par le bridge dès qu'un contrat structuré validé existe.
+
+### Validation Enchanting Trade Service — 14/08/2026
+
+- audit Trade/Cast et interfaces Playerbots réalisé en lecture seule ;
+- capacité négociée `ENCHANT_TRADE_V1` ;
+- `GET~ENCHANT_TRADE` liste uniquement les sorts d'Enchanting connus et valides du bot avec disponibilité des composants/outils ;
+- `RUN~ENCHANT_TRADE` accepte uniquement un bot contrôlable, un token et un ID de sort numérique ; aucun GUID d'objet arbitraire, texte de commande ou exécuteur Playerbots générique n'est exposé ;
+- cible réelle via le Trade WoW natif et `TRADE_SLOT_NONTRADED`, avec revalidation Core au cast puis à l'acceptation finale du Trade ;
+- rate-limit bridge : 4 requêtes par fenêtre de 2 secondes ;
+- UI dédiée visible uniquement pour les bots enchanteurs, accessible depuis l'EveryBar et Character Info ;
+- fenêtre réduite à 440 px, champ de recherche corrigé et textes Enchant Trade localisés dans les 8 locales runtime ;
+- test en jeu : ouverture, liste, recherche, tooltips, Trade et enchantement réel **OK** ;
+- spam chat automatique lié à ce service : **aucun**.
+
+### Chantiers suspendus — à reprendre seulement après la roadmap normale
+
+- `SELL_GREY` / sell-grey core API / bridge-first ;
+- vérification réelle finale Firestone/Spellstone `TEMP_ENCHANTMENT_SLOT` ;
+- quatre warnings LuaLint restants dans `Strategies/MultiBotWarlock.lua` ;
+- autres petits reliquats explicitement reportés lors des étapes précédentes.
+
+Ces sujets restent enregistrés mais **ne doivent pas modifier l'ordre du prochain chantier**.
 
 Critère de sortie : chaque famille migrée fonctionne bridge-first et ne génère plus de réponse chat automatique.
 

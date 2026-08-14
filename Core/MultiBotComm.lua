@@ -18,7 +18,10 @@ local INVENTORY_CAPABILITY = "INVENTORY_V1"
 local INVENTORY_BULK_SELL_CAPABILITY = "INVENTORY_BULK_SELL_V1"
 local INVENTORY_OPEN_CAPABILITY = "INVENTORY_OPEN_V1"
 local GROUP_ROLL_CAPABILITY = "GROUP_ROLL_V1"
+local ENCHANT_TRADE_CAPABILITY = "ENCHANT_TRADE_V1"
 local GROUP_ROLL_TIMEOUT_SECONDS = 5.0
+local ENCHANT_TRADE_TIMEOUT_SECONDS = 5.0
+local ENCHANT_TRADE_MAX_ACTIVE = 8
 local GROUP_ROLL_MAX_ITEM_LINK_LENGTH = 160
 local STATE_TIMEOUT_SECONDS = 5.0
 local STATES_TIMEOUT_SECONDS = 15.0
@@ -239,6 +242,11 @@ local function ensureBridgeState()
   state.inventoryBulkSellCapable = state.inventoryBulkSellCapable or false
   state.inventoryOpenCapable = state.inventoryOpenCapable or false
   state.groupRollCapable = state.groupRollCapable or false
+  state.enchantTradeCapable = state.enchantTradeCapable or false
+  state.enchantTradeSeq = state.enchantTradeSeq or 0
+  state.enchantTradeActive = state.enchantTradeActive or nil
+  state.enchantTradeCommands = state.enchantTradeCommands or {}
+  state.enchantTradeLists = state.enchantTradeLists or {}
   state.groupRollSeq = state.groupRollSeq or 0
   state.groupRollCommands = state.groupRollCommands or {}
   state.strategyMutationSeq = state.strategyMutationSeq or 0
@@ -1710,6 +1718,143 @@ function Comm.RequestProfessionRecipes(name, skillId)
   return true
 end
 
+function Comm.IsEnchantTradeCapable()
+  local state = ensureBridgeState()
+  return state.connected == true and state.enchantTradeCapable == true
+end
+
+function Comm.IsBotEnchanter(name)
+  local state = ensureBridgeState()
+  name = string.lower(trim(name))
+  if name == "" then
+    return false
+  end
+
+  local entry = state.professions and state.professions[name] or nil
+  return type(entry) == "table"
+      and type(entry.professions) == "table"
+      and entry.professions.enchanting ~= nil
+end
+
+local function scheduleEnchantTradeListTimeout(name, token, delaySeconds)
+  safeDelay(delaySeconds or ENCHANT_TRADE_TIMEOUT_SECONDS, function()
+    local bridge = ensureBridgeState()
+    local active = bridge.enchantTradeActive
+    if type(active) ~= "table" or active.token ~= token then
+      return
+    end
+
+    local now = safeNow()
+    local lastProgressAt = tonumber(active.lastProgressAt) or tonumber(active.startedAt) or 0
+    if now > 0 and lastProgressAt > 0 then
+      local idleSeconds = now - lastProgressAt
+      if idleSeconds < ENCHANT_TRADE_TIMEOUT_SECONDS
+          and MultiBot
+          and type(MultiBot.TimerAfter) == "function" then
+        scheduleEnchantTradeListTimeout(
+          name,
+          token,
+          math.max(0.05, ENCHANT_TRADE_TIMEOUT_SECONDS - idleSeconds)
+        )
+        return
+      end
+    end
+
+    bridge.enchantTradeActive = nil
+    if MultiBot.OnBridgeEnchantTradeList then
+      MultiBot.OnBridgeEnchantTradeList(active.botName or name, {}, {
+        token = token,
+        status = "ERR",
+        reason = "TIMEOUT",
+        skillValue = 0,
+        maxSkill = 0,
+      })
+    end
+  end)
+end
+
+local function markEnchantTradeListProgress(active)
+  if type(active) == "table" then
+    active.lastProgressAt = safeNow()
+  end
+end
+
+function Comm.RequestEnchantTrade(name)
+  local state = ensureBridgeState()
+  name = trim(name)
+  if name == "" or not state.connected or state.enchantTradeCapable ~= true then
+    return false
+  end
+
+  state.enchantTradeSeq = (tonumber(state.enchantTradeSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-ench-list-" .. tostring(state.enchantTradeSeq)
+  local now = safeNow()
+  state.enchantTradeActive = {
+    botName = name,
+    botNameKey = string.lower(name),
+    token = token,
+    startedAt = now,
+    lastProgressAt = now,
+    began = false,
+    status = "PENDING",
+    reason = "",
+    skillValue = 0,
+    maxSkill = 0,
+    items = {},
+  }
+
+  if not Comm.Send("GET", "ENCHANT_TRADE~" .. name .. "~" .. token) then
+    state.enchantTradeActive = nil
+    return false
+  end
+
+  scheduleEnchantTradeListTimeout(name, token, ENCHANT_TRADE_TIMEOUT_SECONDS)
+  return token
+end
+
+function Comm.RunEnchantTrade(name, spellId)
+  local state = ensureBridgeState()
+  name = trim(name)
+  spellId = tonumber(spellId or 0) or 0
+  if name == "" or spellId <= 0 or not state.connected or state.enchantTradeCapable ~= true then
+    return false
+  end
+
+  if countTableEntries(state.enchantTradeCommands) >= ENCHANT_TRADE_MAX_ACTIVE then
+    return false
+  end
+
+  state.enchantTradeSeq = (tonumber(state.enchantTradeSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-ench-run-" .. tostring(state.enchantTradeSeq)
+  state.enchantTradeCommands[token] = {
+    botName = name,
+    botNameKey = string.lower(name),
+    spellId = spellId,
+    token = token,
+    startedAt = safeNow(),
+  }
+
+  if not Comm.Send("RUN", "ENCHANT_TRADE~" .. name .. "~" .. token .. "~" .. tostring(spellId)) then
+    state.enchantTradeCommands[token] = nil
+    return false
+  end
+
+  safeDelay(ENCHANT_TRADE_TIMEOUT_SECONDS, function()
+    local bridge = ensureBridgeState()
+    local command = bridge.enchantTradeCommands[token]
+    if not command then
+      return
+    end
+
+    bridge.enchantTradeCommands[token] = nil
+    if MultiBot.OnBridgeEnchantTradeResult then
+      MultiBot.OnBridgeEnchantTradeResult(command.botName, command.spellId, "ERR", "TIMEOUT", command)
+    end
+  end)
+
+  return token
+end
+
 function Comm.RunProfessionRecipeCraft(name, skillId, spellId, itemId)
   local state = ensureBridgeState()
   name = trim(name)
@@ -1893,6 +2038,24 @@ function Comm.MarkDisconnected(reason)
   state.botEmblemActive = nil
   state.professionRecipeActive = nil
   state.professionRecipeCrafts = {}
+
+  if type(state.enchantTradeActive) == "table" and MultiBot.OnBridgeEnchantTradeList then
+    MultiBot.OnBridgeEnchantTradeList(state.enchantTradeActive.botName or "", {}, {
+      token = state.enchantTradeActive.token or "",
+      status = "ERR",
+      reason = "DISCONNECTED",
+      skillValue = 0,
+      maxSkill = 0,
+    })
+  end
+  for _, command in pairs(state.enchantTradeCommands or {}) do
+    if MultiBot.OnBridgeEnchantTradeResult then
+      MultiBot.OnBridgeEnchantTradeResult(command.botName or "", command.spellId or 0, "ERR", "DISCONNECTED", command)
+    end
+  end
+  state.enchantTradeActive = nil
+  state.enchantTradeCommands = {}
+  state.enchantTradeLists = {}
   state.outfitActive = nil
   state.outfitCommands = {}
   state.trainerActive = nil
@@ -1905,6 +2068,7 @@ function Comm.MarkDisconnected(reason)
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
+  state.enchantTradeCapable = false
   state.stateFramingCapable = false
   state.capabilityFallbackDeadline = 0
   state.capabilityFallbackGeneration = 0
@@ -1915,6 +2079,10 @@ function Comm.MarkDisconnected(reason)
   state.bootstrapStateAttempts = 0
   state.pendingStateRefreshAll = false
   state.pendingStateRefreshByBot = {}
+
+  if MultiBot.RefreshEnchantingEveryButtons then
+    MultiBot.RefreshEnchantingEveryButtons()
+  end
 
   local pendingTokens = {}
   for token in pairs(state.strategyMutationCommands or {}) do
@@ -3516,6 +3684,24 @@ local function getActiveProfessionRecipeRequest(botName, token, skillId)
   return active
 end
 
+local function getActiveEnchantTradeRequest(botName, token)
+  local state = ensureBridgeState()
+  local active = state.enchantTradeActive
+  if type(active) ~= "table" then
+    return nil
+  end
+
+  if botName and botName ~= "" and string.lower(trim(botName)) ~= trim(active.botNameKey or "") then
+    return nil
+  end
+
+  if token and token ~= "" and tostring(token) ~= tostring(active.token or "") then
+    return nil
+  end
+
+  return active
+end
+
 local function parseRecipeMaterials(raw)
   local materials = {}
   for token in string.gmatch(raw or "", "([^;]+)") do
@@ -3596,6 +3782,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
   state.inventoryBulkSellCapable = false
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
+    state.enchantTradeCapable = false
     for capability in string.gmatch(payload or "", "([^,]+)") do
       capability = trim(capability)
       if capability == STATE_FRAMING_CAPABILITY then
@@ -3612,6 +3799,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.inventoryOpenCapable = true
       elseif capability == GROUP_ROLL_CAPABILITY then
         state.groupRollCapable = true
+      elseif capability == ENCHANT_TRADE_CAPABILITY then
+        state.enchantTradeCapable = true
       end
     end
     state.capabilityFallbackDeadline = 0
@@ -3619,6 +3808,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.capabilitiesResolved = true
     debugPrint("ADDON:RX", "CAPS", payload or "")
     flushPendingStateRefreshes()
+    if MultiBot.RefreshEnchantingEveryButtons then
+      MultiBot.RefreshEnchantingEveryButtons()
+    end
     return true
   end
 
@@ -4470,6 +4662,274 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     return true
   end
 
+  if opcode == "ENCHANT_TRADE_BEGIN" then
+    local fields = splitFields(payload or "")
+    if #fields ~= 6 then
+      state.lastError = "ENCHANT_TRADE_BEGIN_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = trim(urlDecodeField(fields[1]))
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = string.upper(trim(urlDecodeField(fields[4])))
+    local skillValue = tonumber(fields[5] or "0") or 0
+    local maxSkill = tonumber(fields[6] or "0") or 0
+    state.connected = true
+    state.lastError = nil
+
+    local active = getActiveEnchantTradeRequest(botName, token)
+    if active then
+      if active.began then
+        active.integrityError = active.integrityError or "DUPLICATE_BEGIN"
+        state.lastError = "ENCHANT_TRADE_DUPLICATE_BEGIN"
+      else
+        active.began = true
+        active.status = status
+        active.reason = reason
+        active.skillValue = skillValue
+        active.maxSkill = maxSkill
+        active.items = {}
+        active.itemBySpellId = {}
+        markEnchantTradeListProgress(active)
+      end
+    end
+
+    return true
+  end
+
+  if opcode == "ENCHANT_TRADE_ITEM" then
+    local fields = splitFields(payload or "")
+    if #fields ~= 7 then
+      state.lastError = "ENCHANT_TRADE_ITEM_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = trim(urlDecodeField(fields[1]))
+    local token = trim(fields[2])
+    local spellId = tonumber(fields[3] or "0") or 0
+    local difficulty = trim(urlDecodeField(fields[4]))
+    local available = tonumber(fields[5] or "0") or 0
+    local hasTools = tonumber(fields[6] or "0") or 0
+    local materialCount = tonumber(fields[7] or "")
+    state.connected = true
+    state.lastError = nil
+
+    local active = getActiveEnchantTradeRequest(botName, token)
+    if active then
+      if not active.began then
+        active.integrityError = active.integrityError or "MISSING_BEGIN"
+        state.lastError = "ENCHANT_TRADE_ITEM_BEFORE_BEGIN"
+      elseif spellId <= 0 or materialCount == nil or materialCount < 0 or materialCount > 256 then
+        active.integrityError = active.integrityError or "BAD_ITEM"
+        state.lastError = "ENCHANT_TRADE_ITEM_INVALID"
+      else
+        active.itemBySpellId = active.itemBySpellId or {}
+        if active.itemBySpellId[spellId] then
+          active.integrityError = active.integrityError or "DUPLICATE_SPELL_ID"
+          state.lastError = "ENCHANT_TRADE_DUPLICATE_SPELL_ID"
+        else
+          local entry = {
+            spellId = spellId,
+            difficulty = difficulty,
+            available = available ~= 0 and 1 or 0,
+            materials = {},
+            hasTools = hasTools ~= 0 and 1 or 0,
+            expectedMaterialCount = materialCount,
+            receivedMaterialCount = 0,
+            materialIndexes = {},
+          }
+          table.insert(active.items, entry)
+          active.itemBySpellId[spellId] = entry
+          markEnchantTradeListProgress(active)
+        end
+      end
+    end
+
+    return true
+  end
+
+  if opcode == "ENCHANT_TRADE_MATERIAL" then
+    local fields = splitFields(payload or "")
+    if #fields ~= 7 then
+      state.lastError = "ENCHANT_TRADE_MATERIAL_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = trim(urlDecodeField(fields[1]))
+    local token = trim(fields[2])
+    local spellId = tonumber(fields[3] or "0") or 0
+    local materialIndex = tonumber(fields[4] or "0") or 0
+    local itemId = tonumber(fields[5] or "0") or 0
+    local required = tonumber(fields[6] or "0") or 0
+    local available = tonumber(fields[7] or "0") or 0
+    state.connected = true
+    state.lastError = nil
+
+    local active = getActiveEnchantTradeRequest(botName, token)
+    if active then
+      if not active.began then
+        active.integrityError = active.integrityError or "MISSING_BEGIN"
+        state.lastError = "ENCHANT_TRADE_MATERIAL_BEFORE_BEGIN"
+      else
+        local entry = active.itemBySpellId and active.itemBySpellId[spellId] or nil
+        if not entry then
+          active.integrityError = active.integrityError or "MATERIAL_WITHOUT_ITEM"
+          state.lastError = "ENCHANT_TRADE_MATERIAL_WITHOUT_ITEM"
+        else
+          local expectedMaterialCount = tonumber(entry.expectedMaterialCount or 0) or 0
+          entry.materialIndexes = entry.materialIndexes or {}
+          if materialIndex <= 0 or materialIndex > expectedMaterialCount then
+            active.integrityError = active.integrityError or "MATERIAL_INDEX_OUT_OF_RANGE"
+            state.lastError = "ENCHANT_TRADE_MATERIAL_INDEX_OUT_OF_RANGE"
+          elseif entry.materialIndexes[materialIndex] then
+            active.integrityError = active.integrityError or "DUPLICATE_MATERIAL_INDEX"
+            state.lastError = "ENCHANT_TRADE_DUPLICATE_MATERIAL_INDEX"
+          elseif itemId <= 0 or required <= 0 then
+            active.integrityError = active.integrityError or "BAD_MATERIAL"
+            state.lastError = "ENCHANT_TRADE_MATERIAL_INVALID"
+          else
+            entry.materials[materialIndex] = {
+              itemId = itemId,
+              required = required,
+              available = available,
+            }
+            entry.materialIndexes[materialIndex] = true
+            entry.receivedMaterialCount = (tonumber(entry.receivedMaterialCount or 0) or 0) + 1
+            markEnchantTradeListProgress(active)
+          end
+        end
+      end
+    end
+
+    return true
+  end
+
+  if opcode == "ENCHANT_TRADE_END" then
+    local fields = splitFields(payload or "")
+    if #fields ~= 5 then
+      state.lastError = "ENCHANT_TRADE_END_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = trim(urlDecodeField(fields[1]))
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = string.upper(trim(urlDecodeField(fields[4])))
+    local count = tonumber(fields[5] or "0") or 0
+    state.connected = true
+    state.lastError = nil
+
+    local active = getActiveEnchantTradeRequest(botName, token)
+    if active then
+      active.status = status
+      active.reason = reason
+      active.count = count
+
+      local items = active.items or {}
+      local deliveredItems = items
+      local integrityError = active.integrityError
+
+      if not active.began then
+        integrityError = integrityError or "MISSING_BEGIN"
+      end
+
+      if status == "OK" and not integrityError and #items ~= count then
+        integrityError = "COUNT_MISMATCH"
+      end
+
+      if status == "OK" and not integrityError then
+        for _, entry in ipairs(items) do
+          local expectedMaterialCount = tonumber(entry.expectedMaterialCount or 0) or 0
+          local receivedMaterialCount = tonumber(entry.receivedMaterialCount or 0) or 0
+          if receivedMaterialCount ~= expectedMaterialCount then
+            integrityError = "MATERIAL_COUNT_MISMATCH"
+            break
+          end
+
+          for materialIndex = 1, expectedMaterialCount do
+            if not entry.materialIndexes or not entry.materialIndexes[materialIndex] then
+              integrityError = "MATERIAL_INDEX_GAP"
+              break
+            end
+          end
+
+          if integrityError then
+            break
+          end
+        end
+      end
+
+      if integrityError then
+        status = "ERR"
+        reason = "TRY_AGAIN"
+        active.status = status
+        active.reason = reason
+        state.lastError = "ENCHANT_TRADE_" .. integrityError
+        deliveredItems = {}
+      elseif status == "OK" then
+        local key = string.lower(active.botName or botName)
+        state.enchantTradeLists[key] = items
+      end
+
+      state.enchantTradeActive = nil
+
+      if MultiBot.OnBridgeEnchantTradeList then
+        MultiBot.OnBridgeEnchantTradeList(active.botName or botName, deliveredItems, {
+          token = active.token or token,
+          status = status,
+          reason = reason,
+          skillValue = active.skillValue or 0,
+          maxSkill = active.maxSkill or 0,
+          count = count,
+        })
+      end
+    end
+
+    return true
+  end
+
+  if opcode == "ENCHANT_TRADE_RESULT" then
+    local fields = splitFields(payload or "")
+    if #fields ~= 6 then
+      state.lastError = "ENCHANT_TRADE_RESULT_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = trim(urlDecodeField(fields[1]))
+    local token = trim(fields[2])
+    local spellId = tonumber(fields[3] or "0") or 0
+    local status = string.upper(trim(fields[4]))
+    local reason = string.upper(trim(urlDecodeField(fields[5])))
+    local accepted = tonumber(fields[6] or "0") or 0
+    state.connected = true
+    state.lastError = nil
+
+    local command = state.enchantTradeCommands and state.enchantTradeCommands[token] or nil
+    if command then
+      if botName == "" or string.lower(botName) ~= tostring(command.botNameKey or "") then
+        state.lastError = "ENCHANT_TRADE_RESULT_BOT_MISMATCH"
+        return true
+      end
+
+      if spellId <= 0 or spellId ~= tonumber(command.spellId or 0) then
+        state.lastError = "ENCHANT_TRADE_RESULT_SPELL_MISMATCH"
+        return true
+      end
+
+      state.enchantTradeCommands[token] = nil
+      command.accepted = accepted ~= 0
+      command.status = status
+      command.reason = reason
+
+      if MultiBot.OnBridgeEnchantTradeResult then
+        MultiBot.OnBridgeEnchantTradeResult(command.botName, command.spellId, status, reason, command)
+      end
+    end
+
+    return true
+  end
+
   if opcode == "PROFESSION_RECIPES_BEGIN" then
     local botName, rest = splitOnce(payload or "", "~")
     local token, skillId = splitOnce(rest or "", "~")
@@ -4888,6 +5348,7 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
+  state.enchantTradeCapable = false
   state.strategyMutationCommands = {}
   state.details = {}
   state.stats = {}

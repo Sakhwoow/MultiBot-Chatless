@@ -4700,7 +4700,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
   if opcode == "ENCHANT_TRADE_ITEM" then
     local fields = splitFields(payload or "")
-    if #fields ~= 6 then
+    if #fields ~= 7 then
       state.lastError = "ENCHANT_TRADE_ITEM_BAD_FIELD_COUNT"
       return true
     end
@@ -4711,6 +4711,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     local difficulty = trim(urlDecodeField(fields[4]))
     local available = tonumber(fields[5] or "0") or 0
     local hasTools = tonumber(fields[6] or "0") or 0
+    local materialCount = tonumber(fields[7] or "")
     state.connected = true
     state.lastError = nil
 
@@ -4719,7 +4720,10 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       if not active.began then
         active.integrityError = active.integrityError or "MISSING_BEGIN"
         state.lastError = "ENCHANT_TRADE_ITEM_BEFORE_BEGIN"
-      elseif spellId > 0 then
+      elseif spellId <= 0 or materialCount == nil or materialCount < 0 or materialCount > 256 then
+        active.integrityError = active.integrityError or "BAD_ITEM"
+        state.lastError = "ENCHANT_TRADE_ITEM_INVALID"
+      else
         active.itemBySpellId = active.itemBySpellId or {}
         if active.itemBySpellId[spellId] then
           active.integrityError = active.integrityError or "DUPLICATE_SPELL_ID"
@@ -4731,6 +4735,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
             available = available ~= 0 and 1 or 0,
             materials = {},
             hasTools = hasTools ~= 0 and 1 or 0,
+            expectedMaterialCount = materialCount,
+            receivedMaterialCount = 0,
+            materialIndexes = {},
           }
           table.insert(active.items, entry)
           active.itemBySpellId[spellId] = entry
@@ -4744,7 +4751,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
   if opcode == "ENCHANT_TRADE_MATERIAL" then
     local fields = splitFields(payload or "")
-    if #fields ~= 6 then
+    if #fields ~= 7 then
       state.lastError = "ENCHANT_TRADE_MATERIAL_BAD_FIELD_COUNT"
       return true
     end
@@ -4752,9 +4759,10 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     local botName = trim(urlDecodeField(fields[1]))
     local token = trim(fields[2])
     local spellId = tonumber(fields[3] or "0") or 0
-    local itemId = tonumber(fields[4] or "0") or 0
-    local required = tonumber(fields[5] or "0") or 0
-    local available = tonumber(fields[6] or "0") or 0
+    local materialIndex = tonumber(fields[4] or "0") or 0
+    local itemId = tonumber(fields[5] or "0") or 0
+    local required = tonumber(fields[6] or "0") or 0
+    local available = tonumber(fields[7] or "0") or 0
     state.connected = true
     state.lastError = nil
 
@@ -4765,16 +4773,31 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.lastError = "ENCHANT_TRADE_MATERIAL_BEFORE_BEGIN"
       else
         local entry = active.itemBySpellId and active.itemBySpellId[spellId] or nil
-        if entry and itemId > 0 and required > 0 then
-          table.insert(entry.materials, {
-            itemId = itemId,
-            required = required,
-            available = available,
-          })
-          markEnchantTradeListProgress(active)
-        elseif itemId > 0 and required > 0 then
+        if not entry then
           active.integrityError = active.integrityError or "MATERIAL_WITHOUT_ITEM"
           state.lastError = "ENCHANT_TRADE_MATERIAL_WITHOUT_ITEM"
+        else
+          local expectedMaterialCount = tonumber(entry.expectedMaterialCount or 0) or 0
+          entry.materialIndexes = entry.materialIndexes or {}
+          if materialIndex <= 0 or materialIndex > expectedMaterialCount then
+            active.integrityError = active.integrityError or "MATERIAL_INDEX_OUT_OF_RANGE"
+            state.lastError = "ENCHANT_TRADE_MATERIAL_INDEX_OUT_OF_RANGE"
+          elseif entry.materialIndexes[materialIndex] then
+            active.integrityError = active.integrityError or "DUPLICATE_MATERIAL_INDEX"
+            state.lastError = "ENCHANT_TRADE_DUPLICATE_MATERIAL_INDEX"
+          elseif itemId <= 0 or required <= 0 then
+            active.integrityError = active.integrityError or "BAD_MATERIAL"
+            state.lastError = "ENCHANT_TRADE_MATERIAL_INVALID"
+          else
+            entry.materials[materialIndex] = {
+              itemId = itemId,
+              required = required,
+              available = available,
+            }
+            entry.materialIndexes[materialIndex] = true
+            entry.receivedMaterialCount = (tonumber(entry.receivedMaterialCount or 0) or 0) + 1
+            markEnchantTradeListProgress(active)
+          end
         end
       end
     end
@@ -4813,6 +4836,28 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
       if status == "OK" and not integrityError and #items ~= count then
         integrityError = "COUNT_MISMATCH"
+      end
+
+      if status == "OK" and not integrityError then
+        for _, entry in ipairs(items) do
+          local expectedMaterialCount = tonumber(entry.expectedMaterialCount or 0) or 0
+          local receivedMaterialCount = tonumber(entry.receivedMaterialCount or 0) or 0
+          if receivedMaterialCount ~= expectedMaterialCount then
+            integrityError = "MATERIAL_COUNT_MISMATCH"
+            break
+          end
+
+          for materialIndex = 1, expectedMaterialCount do
+            if not entry.materialIndexes or not entry.materialIndexes[materialIndex] then
+              integrityError = "MATERIAL_INDEX_GAP"
+              break
+            end
+          end
+
+          if integrityError then
+            break
+          end
+        end
       end
 
       if integrityError then
@@ -5328,9 +5373,6 @@ function Comm.OnPlayerEnteringWorld()
   state.professionRecipes = {}
   state.professionRecipeActive = nil
   state.professionRecipeCrafts = {}
-  state.enchantTradeActive = nil
-  state.enchantTradeCommands = {}
-  state.enchantTradeLists = {}
   state.outfitActive = nil
   state.outfitCommands = {}
   state.trainerActive = nil

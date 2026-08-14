@@ -1929,7 +1929,7 @@ function Comm.ApplyRosterPayload(payload)
 
   state.roster = roster
 
-  if MultiBot.SyncBridgeRosterToPlayers then
+  if #roster > 0 and MultiBot.SyncBridgeRosterToPlayers then
     MultiBot.SyncBridgeRosterToPlayers(roster)
   end
 

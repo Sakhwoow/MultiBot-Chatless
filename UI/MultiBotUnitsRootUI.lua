@@ -921,7 +921,32 @@ local function createInviteControls(controlFrame)
     local inviteButton = controlFrame.addButton("Invite", 0, 120, "Interface\\AddOns\\MultiBot\\Icons\\invite.blp", MultiBot.L("tips.units.invite")).setEnable()
 
     inviteButton.doRight = function()
-        if GetNumRaidMembers() > 0 or GetNumPartyMembers() > 0 then
+        local raidCount = GetNumRaidMembers()
+        local partyCount = GetNumPartyMembers()
+        if raidCount > 0 or partyCount > 0 then
+            local units = MultiBot.frames and MultiBot.frames["MultiBar"] and MultiBot.frames["MultiBar"].frames["Units"]
+            if not units then return end
+            local playerName = UnitName("player")
+            local groupNames = {}
+            if raidCount > 0 then
+                for i = 1, raidCount do
+                    local n = UnitName("raid" .. i)
+                    if n and n ~= "" then groupNames[n] = true end
+                end
+            else
+                for i = 1, partyCount do
+                    local n = UnitName("party" .. i)
+                    if n and n ~= "" then groupNames[n] = true end
+                end
+            end
+            for name, btn in pairs(units.buttons) do
+                if btn and btn.roster == "players" and name ~= playerName then
+                    if btn.state or groupNames[name] then
+                        SendChatMessage(".playerbot bot remove " .. name, "SAY")
+                        if btn.setDisable then btn.setDisable() end
+                    end
+                end
+            end
             return
         end
         MultiBot.timer.invite.roster = MultiBot.frames["MultiBar"].buttons[UNITS_BUTTON_NAME].roster

@@ -17,6 +17,9 @@ local OUTFIT_CAPABILITY = "OUTFIT_V1"
 local INVENTORY_CAPABILITY = "INVENTORY_V1"
 local INVENTORY_BULK_SELL_CAPABILITY = "INVENTORY_BULK_SELL_V1"
 local INVENTORY_OPEN_CAPABILITY = "INVENTORY_OPEN_V1"
+local GROUP_ROLL_CAPABILITY = "GROUP_ROLL_V1"
+local GROUP_ROLL_TIMEOUT_SECONDS = 5.0
+local GROUP_ROLL_MAX_ITEM_LINK_LENGTH = 160
 local STATE_TIMEOUT_SECONDS = 5.0
 local STATES_TIMEOUT_SECONDS = 15.0
 local STRATEGY_MUTATION_TIMEOUT_SECONDS = 5.0
@@ -235,6 +238,9 @@ local function ensureBridgeState()
   state.inventoryCapable = state.inventoryCapable or false
   state.inventoryBulkSellCapable = state.inventoryBulkSellCapable or false
   state.inventoryOpenCapable = state.inventoryOpenCapable or false
+  state.groupRollCapable = state.groupRollCapable or false
+  state.groupRollSeq = state.groupRollSeq or 0
+  state.groupRollCommands = state.groupRollCommands or {}
   state.strategyMutationSeq = state.strategyMutationSeq or 0
   state.strategyMutationCommands = state.strategyMutationCommands or {}
   state.weaponEnchantDebugSeq = state.weaponEnchantDebugSeq or 0
@@ -1733,6 +1739,79 @@ function Comm.RunProfessionRecipeCraft(name, skillId, spellId, itemId)
   return token
 end
 
+local function finishGroupRollCommand(token, result)
+  local state = ensureBridgeState()
+  local pending = state.groupRollCommands[token]
+  if not pending then
+    return false
+  end
+
+  state.groupRollCommands[token] = nil
+  result = type(result) == "table" and result or {}
+  result.token = token
+  result.mode = result.mode or pending.mode
+
+  if type(pending.callback) == "function" then
+    pending.callback(result)
+  end
+
+  if MultiBot.OnGroupRollResult then
+    MultiBot.OnGroupRollResult(result)
+  end
+
+  return true
+end
+
+function Comm.RunGroupRoll(itemLink, callback)
+  local state = ensureBridgeState()
+  if not state.connected or state.groupRollCapable ~= true then
+    return false
+  end
+
+  itemLink = trim(itemLink or "")
+  local mode = "NORMAL"
+  if itemLink ~= "" then
+    if #itemLink > GROUP_ROLL_MAX_ITEM_LINK_LENGTH or not string.find(itemLink, "|Hitem:", 1, true) then
+      return false
+    end
+    mode = "ITEM"
+  end
+
+  state.groupRollSeq = (tonumber(state.groupRollSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-roll-" .. tostring(state.groupRollSeq)
+  state.groupRollCommands[token] = {
+    mode = mode,
+    callback = type(callback) == "function" and callback or nil,
+    startedAt = safeNow(),
+  }
+
+  local payload = "GROUP_ROLL~" .. token .. "~" .. mode
+  if mode == "ITEM" then
+    payload = payload .. "~" .. urlEncodeField(itemLink)
+  end
+
+  if not Comm.Send("RUN", payload) then
+    state.groupRollCommands[token] = nil
+    return false
+  end
+
+  safeDelay(GROUP_ROLL_TIMEOUT_SECONDS, function()
+    local bridge = ensureBridgeState()
+    if not bridge.groupRollCommands[token] then
+      return
+    end
+
+    finishGroupRollCommand(token, {
+      status = "timeout",
+      matched = 0,
+      invoked = 0,
+      reason = "TIMEOUT",
+    })
+  end)
+
+  return token
+end
+
 function Comm.RunInventoryItemAction(name, action, itemId, count)
   local state = ensureBridgeState()
   name = trim(name)
@@ -1793,6 +1872,21 @@ function Comm.MarkDisconnected(reason)
   state.bankActive = nil
   state.guildBankActive = nil
   state.inventoryItemActions = {}
+
+  local pendingRollTokens = {}
+  for token in pairs(state.groupRollCommands or {}) do
+    pendingRollTokens[#pendingRollTokens + 1] = token
+  end
+  for _, token in ipairs(pendingRollTokens) do
+    finishGroupRollCommand(token, {
+      status = "error",
+      matched = 0,
+      invoked = 0,
+      reason = "DISCONNECTED",
+    })
+  end
+  state.groupRollCommands = {}
+
   state.spellbookActive = nil
   state.botSkillActive = nil
   state.botReputationActive = nil
@@ -1810,6 +1904,7 @@ function Comm.MarkDisconnected(reason)
   state.inventoryCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
+  state.groupRollCapable = false
   state.stateFramingCapable = false
   state.capabilityFallbackDeadline = 0
   state.capabilityFallbackGeneration = 0
@@ -3500,6 +3595,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.inventoryCapable = false
   state.inventoryBulkSellCapable = false
     state.inventoryOpenCapable = false
+    state.groupRollCapable = false
     for capability in string.gmatch(payload or "", "([^,]+)") do
       capability = trim(capability)
       if capability == STATE_FRAMING_CAPABILITY then
@@ -3514,6 +3610,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.inventoryBulkSellCapable = true
       elseif capability == INVENTORY_OPEN_CAPABILITY then
         state.inventoryOpenCapable = true
+      elseif capability == GROUP_ROLL_CAPABILITY then
+        state.groupRollCapable = true
       end
     end
     state.capabilityFallbackDeadline = 0
@@ -4665,6 +4763,52 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     return true
   end
 
+  if opcode == "GROUP_ROLL_ACK" then
+    local fields = splitFields(payload or "")
+    if #fields ~= 7 then
+      state.lastError = "GROUP_ROLL_ACK_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local token = trim(fields[1])
+    local status = string.upper(trim(fields[2]))
+    local mode = string.upper(trim(fields[3]))
+    local scope = string.upper(trim(fields[4]))
+    local matched = parseBoundedInteger(fields[5], 0, 128)
+    local invoked = parseBoundedInteger(fields[6], 0, 128)
+    local reason = urlDecodeFieldStrict(fields[7], 64, false)
+    local pending = state.groupRollCommands[token]
+
+    if not isValidStateToken(token)
+        or (status ~= "OK" and status ~= "ERR")
+        or (mode ~= "NORMAL" and mode ~= "ITEM")
+        or (scope ~= "PARTY" and scope ~= "RAID" and scope ~= "NONE")
+        or matched == nil
+        or invoked == nil
+        or invoked > matched
+        or reason == nil
+        or type(pending) ~= "table"
+        or pending.mode ~= mode then
+      state.lastError = "GROUP_ROLL_ACK_INVALID"
+      return true
+    end
+
+    state.connected = true
+    state.lastError = nil
+    debugPrint("ADDON:RX", "GROUP_ROLL_ACK", payload or "")
+
+    finishGroupRollCommand(token, {
+      status = status == "OK" and "ok" or "error",
+      mode = mode,
+      scope = scope,
+      matched = matched,
+      invoked = invoked,
+      reason = reason,
+    })
+
+    return true
+  end
+
   if opcode == "ERR" then
     state.lastError = payload
     debugPrint("ADDON:RX", "ERR", payload or "")
@@ -4677,7 +4821,14 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
       requestType = requestType and string.upper(trim(requestType)) or nil
       if requestType and isValidStateToken(token) and reason then
-        if requestType == "STRATEGY" and state.strategyMutationCommands[token] then
+        if requestType == "GROUP_ROLL" and state.groupRollCommands[token] then
+          finishGroupRollCommand(token, {
+            status = "error",
+            matched = 0,
+            invoked = 0,
+            reason = reason,
+          })
+        elseif requestType == "STRATEGY" and state.strategyMutationCommands[token] then
           finishStrategyMutationCommand(token, {
             status = "error",
             matched = 0,
@@ -4736,6 +4887,7 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
+  state.groupRollCapable = false
   state.strategyMutationCommands = {}
   state.details = {}
   state.stats = {}

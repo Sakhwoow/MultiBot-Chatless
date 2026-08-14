@@ -1876,6 +1876,21 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
     end
   end
 
+  -- Preserve legacy-chat players: collect existing index before roster wipe
+  local legacyPlayers = {}
+  local legacyClassPlayers = {}
+  for _, name in ipairs(MultiBot.index.players or {}) do
+    if type(name) == "string" and name ~= "" then
+      legacyPlayers[name] = true
+    end
+  end
+  for cls, names in pairs(MultiBot.index.classes.players or {}) do
+    legacyClassPlayers[cls] = legacyClassPlayers[cls] or {}
+    for _, name in ipairs(names) do
+      legacyClassPlayers[cls][name] = true
+    end
+  end
+
   local playerName = nil
   if type(UnitName) == "function" then
     playerName = UnitName("player")
@@ -1884,10 +1899,18 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
     visibleNames[playerName] = true
   end
 
+  -- Bots in bridge ROSTER are visible
+  local rosterNames = {}
   for _, entry in ipairs(roster) do
     if entry and type(entry.name) == "string" and entry.name ~= "" then
       visibleNames[entry.name] = true
+      rosterNames[entry.name] = true
     end
+  end
+
+  -- Legacy-chat bots not in ROSTER: keep visible (will be re-added as disabled below)
+  for name, _ in pairs(legacyPlayers) do
+    visibleNames[name] = true
   end
 
   for name, btn in pairs(buttons) do
@@ -1963,6 +1986,29 @@ function MultiBot.SyncBridgeRosterToPlayers(roster)
             button.setDisable()
           end
         end
+      end
+    end
+  end
+
+  -- Re-add legacy-chat bots not covered by bridge ROSTER (keep them as disabled/offline)
+  for name, _ in pairs(legacyPlayers) do
+    if not rosterNames[name] then
+      local btn = buttons[name]
+      if btn and btn.roster == "players" then
+        local cls = btn.class or "Unknown"
+        local pidx = MultiBot.index.players
+        local found = false
+        for i = 1, #pidx do if pidx[i] == name then found = true; break end end
+        if not found then table.insert(pidx, name) end
+        if MultiBot.index.classes.players[cls] == nil then
+          MultiBot.index.classes.players[cls] = {}
+        end
+        local cidx = MultiBot.index.classes.players[cls]
+        local cfound = false
+        for i = 1, #cidx do if cidx[i] == name then cfound = true; break end end
+        if not cfound then table.insert(cidx, name) end
+        if btn.setDisable then btn.setDisable() end
+        btn:Show()
       end
     end
   end

@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état post-merge du 14 août 2026.
-Dernière mise à jour : 15/08/2026 — audit Jellypowered `Extended` validé. Avant la reprise de la roadmap normale, priorité au support multi-préfixes configurable et à la reprise sélective des fonctions Extended classées sûres/utiles. Les endpoints génériques dangereux restent explicitement rejetés. Le prochain chantier normal après ce lot reste l'ajout/retrait d'items précis dans les règles de loot.
+Dernière mise à jour : 15/08/2026 — `INVENTORY_EXACT_V1`, l'UI inventaire bag-aware (Backpack + 4 sacs + Keyring, slots vides et filtres par conteneur) et `ITEM_MOVE_V1` sont implémentés, vérifiés et validés en jeu. Le drag & drop déplace une pile entière entre emplacements physiques autorisés via le Bridge, sans mutation optimiste ni API curseur native côté addon ; le split-stack reste un chantier distinct. Le support multi-préfixes reste différé tant qu'aucun second addon/préfixe n'en a besoin et les endpoints génériques dangereux restent explicitement rejetés. Dans la reprise sélective Jellypowered, le prochain chantier actif est désormais **Lectures bulk** (`GET~INVENTORY_BULK` / `GET~BOT_SKILLS_BULK`) ; dans la roadmap normale, le prochain chantier reste l'ajout/retrait d'items précis dans les règles de loot.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -66,25 +66,49 @@ La branche `Extended` est divergente et ne doit pas être mergée en bloc. Chaqu
 
 ### Fonctions à ajouter ou adapter après audit sémantique ciblé
 
-1. **Support multi-préfixes addon configurables — À ADAPTER, priorité haute**
-   - conserver `MBOT` comme préfixe MultiBot ;
-   - whitelist stricte côté Bridge ;
-   - réponse sur le même préfixe que la requête ;
-   - ne jamais accepter un préfixe arbitraire non configuré ;
-   - configuration de référence auditée :
+1. **Support multi-préfixes addon configurables — DIFFÉRÉ**
+   - audit ciblé terminé : `audit-multibot-multiprefix-v1c-2026-08-15-133152.zip` ;
+   - le MultiBot actuel utilise uniquement `MBOT` et aucune autre fonction Extended n'exige le multi-préfixes ;
+   - ne pas modifier le framing/routage stable sans besoin réel : reprendre ce point seulement si un second addon ou namespace doit communiquer avec le Bridge ;
+   - si ce besoin apparaît : `MBOT` reste supporté par défaut, whitelist stricte et bornée côté Bridge, réponse sur le même préfixe que la requête, calcul des 255 octets avec le préfixe réellement utilisé, logs permettant de détecter le cross-talk et aucun préfixe arbitraire accepté.
 
-```ini
-MultiBotBridge.AcceptPrefixes = MBOT,PBAM
-```
+2. **Inventaire à emplacements exacts, UI bag-aware et déplacement natif — TERMINÉ / VALIDÉ EN JEU**
+   - audits ciblés de conception terminés :
+     - `audit-multibot-inventory-exact-locations-v1-2026-08-15-135528.zip` ;
+     - `audit-multibot-inventory-bag-ui-v1-2026-08-15-142637.zip` ;
+   - `INVENTORY_EXACT_V1` est implémenté comme fondation complémentaire à l'`INVENTORY_V1` historique : le chemin legacy `INV_BEGIN` / `INV_ITEM` reste conservé pour les fonctions déjà validées ;
+   - le Bridge expose la topologie réelle des conteneurs avec `INV_BAG` et les piles physiques avec `INV_ITEM_LOC`, en utilisant les coordonnées AzerothCore réelles comme référence canonique ;
+   - les coordonnées et métadonnées permettent de distinguer sans ambiguïté Backpack, sacs équipés, Keyring et piles identiques situées dans des emplacements physiques différents ;
+   - `INV_EQUIP_LOC` reste différé jusqu'au chantier `ITEM_EQUIP`, où il aura un consommateur réel ;
+   - `INVENTORY_BULK_SELL_V1` et `INVENTORY_OPEN_V1` restent préservés ;
+   - les données exactes ne sont jamais une autorisation : joueur, contrôle du bot, session/map, coordonnées, item, quantité et état runtime restent revalidés côté Bridge.
 
-   - `PBAM` n'est pas requis pour MultiBot seul ; la configuration finale sera décidée lors du patch fonctionnel.
+   **UI bag-aware réalisée et validée :**
+   - taille générale de la fenêtre conservée ; zone grille/scroll réduite pour réserver la barre basse ;
+   - barre basse : **Backpack + Sac 1 + Sac 2 + Sac 3 + Sac 4 + Keyring** ;
+   - aucune sélection = vue globale ; clic sur un conteneur = filtre local ; second clic sur le même conteneur = retour à la vue globale ;
+   - changement de bot = retour à la vue globale ; rafraîchissement du même bot = filtre conservable ;
+   - les emplacements vides sont dessinés et les items sont placés dans leurs coordonnées physiques réelles ;
+   - les quatre sacs équipés utilisent leurs vraies icônes ; un emplacement de sac absent reste visible mais désactivé ;
+   - Backpack utilise la texture client 3.3.5a validée ; Keyring utilise une icône verticale étroite `13x28` sans cadre carré, avec une zone cliquable `32x32` ;
+   - les tooltips Backpack / Sac 1..4 / Keyring sont couverts dans les 8 locales Addon auditées ;
+   - tests en jeu validés : `/reload`, rendu initial, slots vides, vue globale, filtres Backpack/Sac 1/Sac 2/Sac 3/Sac 4/Keyring, retour à Tous, traductions FR et rendu final Keyring ;
+   - le trafic exact reste lié au consommateur UI : l'Addon conserve le chemin legacy puis demande le snapshot exact pour la fenêtre d'inventaire ; aucun polling global n'est introduit.
 
-2. **Emplacements exacts inventaire/équipement — À ADAPTER**
-   - étudier `INV_BAG`, `INV_ITEM_LOC`, `INV_EQUIP_LOC` ;
-   - utiliser `itemId + bag + slot` lorsqu'une action doit viser un exemplaire précis ;
-   - revalider l'emplacement au moment de l'action.
+   **`ITEM_MOVE_V1` réalisé et validé :**
+   - endpoint spécialisé `RUN~ITEM_MOVE` pour déplacer une pile entière entre slots physiques autorisés ; le split-stack reste explicitement hors scope ;
+   - drag/drop synthétique côté Addon avec `RegisterForDrag("LeftButton")`, résolution de la destination via `GetMouseFocus()` / `__mbExactSlot`, sans `PickupContainerItem`, `PickupInventoryItem`, `GetCursorInfo` ni `ClearCursor` ;
+   - aucune mutation optimiste de l'UI : le résultat structuré `INVENTORY_ITEM_MOVE` déclenche un nouveau snapshot exact ;
+   - le Bridge revalide bot contrôlable, sessions/monde, source/destination, `itemId`, quantité et positions autorisées Backpack / sacs équipés / Keyring ;
+   - protection serveur : **8 requêtes / 2 s / requester**, TTL anti-rejeu **10 s**, **32** tokens récents maximum par requester, état requester borné à **512**, quantité bornée à **1000** ;
+   - exécution native par **un seul `Player::SwapItem`**, puis relecture autoritative de la source et de la destination ; succès uniquement si l'état réel a changé ;
+   - aucun `SplitItem`, `HandleCommand`, `DoSpecificAction`, exécuteur Playerbots générique ni dépendance chat/whisper sur le chemin `ITEM_MOVE_V1` ;
+   - tests en jeu validés : drag/drop même conteneur et inter-conteneurs, rafraîchissement exact après résultat, absence de spam chat et absence de régression constatée ;
+   - UI finale validée : groupes visuels par conteneur en vue globale, titres repositionnés, nom jaune redondant supprimé, panneau actions gauche **120 px**, espacement des actions **36/38**, grille inventaire conservée à **8 colonnes** ;
+   - audit final : `audit-multibot-item-move-final-v1b-2026-08-15-195912.zip` — `FINAL_STATUS=OK`, `FAILURE_COUNT=0`, `WARNING_COUNT=0` ;
+   - attribution Jellypowered à conserver pour les parties réellement reprises ou substantiellement adaptées depuis `Extended`.
 
-3. **Lectures bulk — À ADAPTER**
+3. **Lectures bulk — PROCHAIN CHANTIER JELLYPOWERED / À AUDITER-ADAPTER**
    - `GET~INVENTORY_BULK` est distinct de notre `INVENTORY_BULK_SELL_V1` ;
    - étudier aussi `GET~BOT_SKILLS_BULK` ;
    - framing/token, limites de bots/items/octets, timeouts et nettoyage obligatoires.
@@ -158,7 +182,7 @@ Aucune fonction Extended ne doit être marquée comme intégrée avant validatio
   `Design inspired by the Jellypowered bridge contribution.` ;
 - les crédits sont ajoutés uniquement pour les parties réellement intégrées et validées.
 
-Statut : **audit Extended validé ; reprise sélective prioritaire avant la roadmap normale ; merge direct du fork interdit.**
+Statut : **audit Extended validé ; reprise sélective prioritaire avant la roadmap normale ; merge direct du fork interdit.** Le travail Jellypowered courant est isolé sur `feature/jellypowered-chatless-integration` dans l'Addon et le Bridge ; les commits validés y sont accumulés et aucune PR/merge vers `main` ne doit être lancée avant demande explicite de l'utilisateur.
 
 
 ## Phase 0 — Assainissement documentaire — TERMINÉE

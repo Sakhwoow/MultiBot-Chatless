@@ -166,7 +166,10 @@ local function shouldSuppressTradeInventoryWhisper(message, author)
             return true
         end
 
+        local tradePartner = UnitName and UnitName("NPC") or nil
         if isKnownInventoryBotAuthor(author)
+            and tradePartner
+            and authorKey == normalizeInventoryAuthorName(tradePartner)
             and TradeFrame
             and TradeFrame.IsShown
             and TradeFrame:IsShown()

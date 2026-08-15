@@ -18,6 +18,7 @@ local INVENTORY_CAPABILITY = "INVENTORY_V1"
 local INVENTORY_EXACT_CAPABILITY = "INVENTORY_EXACT_V1"
 local INVENTORY_ITEM_MOVE_CAPABILITY = "ITEM_MOVE_V1"
 local INVENTORY_ITEM_EQUIP_CAPABILITY = "ITEM_EQUIP_V1"
+local INVENTORY_ITEM_UNEQUIP_CAPABILITY = "ITEM_UNEQUIP_V1"
 local INVENTORY_BULK_SELL_CAPABILITY = "INVENTORY_BULK_SELL_V1"
 local INVENTORY_OPEN_CAPABILITY = "INVENTORY_OPEN_V1"
 local GROUP_ROLL_CAPABILITY = "GROUP_ROLL_V1"
@@ -26,6 +27,7 @@ local GROUP_ROLL_TIMEOUT_SECONDS = 5.0
 local ENCHANT_TRADE_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_EQUIP_TIMEOUT_SECONDS = 5.0
+local INVENTORY_ITEM_UNEQUIP_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_MAX_COUNT = 1000
 local INVENTORY_ITEM_EQUIP_MAX_COUNT = 1000
 local ENCHANT_TRADE_MAX_ACTIVE = 8
@@ -249,6 +251,7 @@ local function ensureBridgeState()
   state.inventoryExactCapable = state.inventoryExactCapable or false
   state.inventoryItemMoveCapable = state.inventoryItemMoveCapable or false
   state.inventoryItemEquipCapable = state.inventoryItemEquipCapable or false
+  state.inventoryItemUnequipCapable = state.inventoryItemUnequipCapable or false
   state.inventoryBulkSellCapable = state.inventoryBulkSellCapable or false
   state.inventoryOpenCapable = state.inventoryOpenCapable or false
   state.groupRollCapable = state.groupRollCapable or false
@@ -286,6 +289,8 @@ local function ensureBridgeState()
   state.inventoryItemMoves = state.inventoryItemMoves or {}
   state.inventoryItemEquipSeq = state.inventoryItemEquipSeq or 0
   state.inventoryItemEquips = state.inventoryItemEquips or {}
+  state.inventoryItemUnequipSeq = state.inventoryItemUnequipSeq or 0
+  state.inventoryItemUnequips = state.inventoryItemUnequips or {}
   state.bankItems = state.bankItems or {}
   state.bankSeq = state.bankSeq or 0
   state.bankActive = state.bankActive or nil
@@ -1736,6 +1741,66 @@ function Comm.RunInventoryItemEquip(name, srcBag, srcSlot, srcItemId, srcCount)
   return token
 end
 
+function Comm.IsInventoryItemUnequipCapable()
+  local state = ensureBridgeState()
+  return state.connected == true and state.inventoryItemUnequipCapable == true
+end
+
+function Comm.RunInventoryItemUnequip(name, srcSlot, srcItemId)
+  local state = ensureBridgeState()
+  name = trim(name)
+
+  srcSlot = parseBoundedInteger(tostring(srcSlot or ""), 0, 18)
+  srcItemId = parseBoundedInteger(tostring(srcItemId or ""), 1, 4294967295)
+
+  if name == "" or not state.connected or state.inventoryItemUnequipCapable ~= true then
+    return false
+  end
+  if srcSlot == nil or not srcItemId then
+    return false
+  end
+
+  state.inventoryItemUnequipSeq = (tonumber(state.inventoryItemUnequipSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-unequip-" .. tostring(state.inventoryItemUnequipSeq)
+  local command = {
+    token = token,
+    botName = name,
+    botNameKey = string.lower(name),
+    srcSlot = srcSlot,
+    srcItemId = srcItemId,
+    startedAt = safeNow(),
+  }
+  state.inventoryItemUnequips[token] = command
+
+  local payload = table.concat({
+    "ITEM_UNEQUIP", name, token,
+    tostring(srcSlot), tostring(srcItemId),
+  }, "~")
+
+  if not Comm.Send("RUN", payload) then
+    state.inventoryItemUnequips[token] = nil
+    return false
+  end
+
+  safeDelay(INVENTORY_ITEM_UNEQUIP_TIMEOUT_SECONDS, function()
+    local bridge = ensureBridgeState()
+    local pending = bridge.inventoryItemUnequips and bridge.inventoryItemUnequips[token] or nil
+    if not pending then
+      return
+    end
+
+    bridge.inventoryItemUnequips[token] = nil
+    bridge.lastError = "ITEM_UNEQUIP_TIMEOUT"
+    if MultiBot.OnBridgeInventoryItemUnequipResult then
+      MultiBot.OnBridgeInventoryItemUnequipResult(
+        pending.botName, "ERR", "TIMEOUT", pending.srcSlot, pending.srcItemId, pending
+      )
+    end
+  end)
+
+  return token
+end
+
 function Comm.RequestBank(name)
   local state = ensureBridgeState()
   name = trim(name)
@@ -2224,6 +2289,14 @@ function Comm.MarkDisconnected(reason)
   end
   state.inventoryItemMoves = {}
   state.inventoryItemEquips = {}
+  for _, command in pairs(state.inventoryItemUnequips or {}) do
+    if MultiBot.OnBridgeInventoryItemUnequipResult then
+      MultiBot.OnBridgeInventoryItemUnequipResult(
+        command.botName or "", "ERR", "DISCONNECTED", command.srcSlot or 0, command.srcItemId or 0, command
+      )
+    end
+  end
+  state.inventoryItemUnequips = {}
 
   state.bankActive = nil
   state.guildBankActive = nil
@@ -2279,6 +2352,7 @@ function Comm.MarkDisconnected(reason)
   state.inventoryExactCapable = false
   state.inventoryItemMoveCapable = false
   state.inventoryItemEquipCapable = false
+  state.inventoryItemUnequipCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
@@ -4031,6 +4105,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.inventoryCapable = false
     state.inventoryExactCapable = false
     state.inventoryItemEquipCapable = false
+    state.inventoryItemUnequipCapable = false
     state.inventoryBulkSellCapable = false
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
@@ -4051,6 +4126,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.inventoryItemMoveCapable = true
       elseif capability == INVENTORY_ITEM_EQUIP_CAPABILITY then
         state.inventoryItemEquipCapable = true
+      elseif capability == INVENTORY_ITEM_UNEQUIP_CAPABILITY then
+        state.inventoryItemUnequipCapable = true
       elseif capability == INVENTORY_BULK_SELL_CAPABILITY then
         state.inventoryBulkSellCapable = true
       elseif capability == INVENTORY_OPEN_CAPABILITY then
@@ -4867,6 +4944,64 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     end
 
     debugPrint("ADDON:RX", "INVENTORY_ITEM_EQUIP", botName, token, status, reason, srcBag, srcSlot, dstSlot)
+    return true
+  end
+
+  if opcode == "INVENTORY_ITEM_UNEQUIP" then
+    local fields = splitFields(payload)
+    if #fields ~= 6 then
+      state.lastError = "ITEM_UNEQUIP_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = urlDecodeFieldStrict(fields[4], 64, false)
+    local srcSlot = parseBoundedInteger(fields[5], 0, 18)
+    local srcItemId = parseBoundedInteger(fields[6], 1, 4294967295)
+
+    state.connected = true
+    local command = state.inventoryItemUnequips and state.inventoryItemUnequips[token] or nil
+    if not botName or not isValidStateToken(token) or (status ~= "OK" and status ~= "ERR") or not reason or
+      srcSlot == nil or srcItemId == nil then
+      state.lastError = "ITEM_UNEQUIP_BAD_RESPONSE"
+      if command then
+        state.inventoryItemUnequips[token] = nil
+        if MultiBot.OnBridgeInventoryItemUnequipResult then
+          MultiBot.OnBridgeInventoryItemUnequipResult(
+            command.botName, "ERR", "BAD_RESPONSE", command.srcSlot, command.srcItemId, command
+          )
+        end
+      end
+      return true
+    end
+
+    if not command then
+      return true
+    end
+
+    local responseMatches = string.lower(botName) == command.botNameKey and
+      srcSlot == command.srcSlot and srcItemId == command.srcItemId
+
+    state.inventoryItemUnequips[token] = nil
+    if not responseMatches then
+      status = "ERR"
+      reason = "RESPONSE_MISMATCH"
+      state.lastError = "ITEM_UNEQUIP_RESPONSE_MISMATCH"
+    elseif status == "OK" then
+      state.lastError = nil
+    else
+      state.lastError = "ITEM_UNEQUIP_" .. reason
+    end
+
+    if MultiBot.OnBridgeInventoryItemUnequipResult then
+      MultiBot.OnBridgeInventoryItemUnequipResult(
+        command.botName, status, reason, command.srcSlot, command.srcItemId, command
+      )
+    end
+
+    debugPrint("ADDON:RX", "INVENTORY_ITEM_UNEQUIP", botName, token, status, reason, srcSlot, srcItemId)
     return true
   end
 
@@ -5849,6 +5984,7 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryExactCapable = false
   state.inventoryItemMoveCapable = false
   state.inventoryItemEquipCapable = false
+  state.inventoryItemUnequipCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false

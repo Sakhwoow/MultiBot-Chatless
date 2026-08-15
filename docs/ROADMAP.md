@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état post-merge du 14 août 2026.
-Dernière mise à jour : 15/08/2026 — `ENCHANT_TRADE_V1` est mergé (Addon #63 / Bridge #27) et la suppression locale du dump inventaire automatique à l'ouverture d'un Trade est validée sans régression ; prochain chantier normal inchangé : ajout/retrait d'items précis dans les règles de loot.
+Dernière mise à jour : 15/08/2026 — audit Jellypowered `Extended` validé. Avant la reprise de la roadmap normale, priorité au support multi-préfixes configurable et à la reprise sélective des fonctions Extended classées sûres/utiles. Les endpoints génériques dangereux restent explicitement rejetés. Le prochain chantier normal après ce lot reste l'ajout/retrait d'items précis dans les règles de loot.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -37,54 +37,129 @@ Audit → Analyse → Proposition → Validation utilisateur → Patch minimal �
 
 ## Contribution externe Jellypowered — RÉFÉRENCE CONSERVÉE, ATTRIBUTION OBLIGATOIRE
 
-Source reçue le 04/08/2026 :
+Deux sources Jellypowered sont conservées comme références de recherche. **Aucune ne doit être fusionnée directement dans `main`.**
+
+### Contribution initiale reçue le 04/08/2026
 
 - auteur : Jellypowered `<Jellypowered@gmail.com>` ;
-- commit 1 : `13059a9f334d1e5aaa8560ab29a1814e48b07054` ;
-- commit 2 : `7ff1347535be6d5a3256d933731c11c4b3f3b38e` ;
-- commit 3 : `04061f084bd189487f1ac0e99892316146f1bea0` ;
-- la PR est conservée comme source de recherche et ne doit pas être fusionnée directement dans `main`.
+- commits : `13059a9f334d1e5aaa8560ab29a1814e48b07054`, `7ff1347535be6d5a3256d933731c11c4b3f3b38e`, `04061f084bd189487f1ac0e99892316146f1bea0` ;
+- cette contribution reste une source historique à comparer avec l'état actuel.
 
-Décision validée :
+### Fork `Extended` audité le 15/08/2026 — REPRISE SÉLECTIVE PRIORITAIRE
 
-- auditer la contribution dans un environnement isolé ;
-- conserver les parties techniquement sûres et utiles ;
-- adapter ou réécrire les parties incompatibles avec notre bridge actuel ;
-- intégrer progressivement par patches à objectif unique ;
-- ne jamais modifier `mod-playerbots` ;
-- ne marquer aucune fonction comme intégrée avant vérification, compilation, tests en jeu et validation explicite de l'utilisateur.
+- fork : `Jellypowered/mod-multibot-bridge`, branche `Extended` ;
+- commit `89da6a9dd15be77c3cbfe9be88a9885b632d606a` — extension générale du bridge ;
+- commit `40bc0e378b1723d746d3425d4ee0818fd01531c6` — utilisation native d'item ;
+- commit `7f9027faf6126bd2854d9f5e84f9a7fa82549077` — resynchronisation partielle avec les fonctions upstream ;
+- audit : `audit-multibot-jellypowered-extended-v1-2026-08-15-025145.zip` ;
+- SHA-256 réel : `88a64500cb339fe8842d1f3b5a0553145d12f5eff34bbe9e30bd0fed04ed2d7b` ;
+- `mod-playerbots` est resté strictement en lecture seule.
 
-Fonctions candidates identifiées dans la contribution lors de l'audit initial ; leur statut projet actuel doit être lu dans les phases et jalons ci-dessous, pas déduit de cette liste :
+La branche `Extended` est divergente et ne doit pas être mergée en bloc. Chaque fonction suit obligatoirement cette matrice :
 
-1. helpers de parsing numérique strict et réponses structurées ;
-2. inventaire détaillé `INV_BAG`, `INV_ITEM_LOC`, `INV_EQUIP_LOC` ;
-3. lectures bulk inventaire et compétences ;
-4. équipement d'objet ;
-5. abandon et partage de quête ;
-6. lancement de sorts ;
-7. application de talents ;
-8. échange d'objets ;
-9. artisanat ciblé ;
-10. modifications des transferts banque, banque de guilde et vendeur.
+`Fonction Jellypowered`
+→ `Déjà présente chez nous ?`
+→ `Absente / partielle / différente ?`
+→ `Compatible avec notre sécurité ?`
+→ `Utile à la roadmap ?`
+→ `REPRENDRE / ADAPTER / REJETER`
 
-Crédits obligatoires :
+### Fonctions à ajouter ou adapter après audit sémantique ciblé
 
-- les audits et rapports conservent les trois hashes de commits, le nom et l'adresse de l'auteur ;
-- chaque PR intermédiaire indique précisément le code repris, adapté, réécrit ou rejeté ;
-- une reprise substantielle de code utilise, lorsque pertinent :
+1. **Support multi-préfixes addon configurables — À ADAPTER, priorité haute**
+   - conserver `MBOT` comme préfixe MultiBot ;
+   - whitelist stricte côté Bridge ;
+   - réponse sur le même préfixe que la requête ;
+   - ne jamais accepter un préfixe arbitraire non configuré ;
+   - configuration de référence auditée :
+
+```ini
+MultiBotBridge.AcceptPrefixes = MBOT,PBAM
+```
+
+   - `PBAM` n'est pas requis pour MultiBot seul ; la configuration finale sera décidée lors du patch fonctionnel.
+
+2. **Emplacements exacts inventaire/équipement — À ADAPTER**
+   - étudier `INV_BAG`, `INV_ITEM_LOC`, `INV_EQUIP_LOC` ;
+   - utiliser `itemId + bag + slot` lorsqu'une action doit viser un exemplaire précis ;
+   - revalider l'emplacement au moment de l'action.
+
+3. **Lectures bulk — À ADAPTER**
+   - `GET~INVENTORY_BULK` est distinct de notre `INVENTORY_BULK_SELL_V1` ;
+   - étudier aussi `GET~BOT_SKILLS_BULK` ;
+   - framing/token, limites de bots/items/octets, timeouts et nettoyage obligatoires.
+
+4. **Équipement natif d'un item précis — À ADAPTER**
+   - endpoint spécialisé `ITEM_EQUIP` ;
+   - valider bot, item exact, emplacement, slot cible et état runtime.
+
+5. **Utilisation native d'un item précis — À ADAPTER**
+   - endpoint spécialisé `ITEM_USE` ;
+   - item exact, usage explicitement supporté, cooldown/cast/mouvement/état revalidés ;
+   - ne pas considérer l'action réussie avant validation du résultat réel.
+
+6. **Déplacement/rééquipement de sacs — À ADAPTER, priorité faible**
+   - `BAG_MOVE` Extended déplace un sac entre emplacements de sacs équipés ;
+   - ne pas le présenter comme un déplacement arbitraire de tout item.
+
+7. **Échange d'un item précis — À ADAPTER**
+   - étudier `ITEM_TRADE` avec quantité et emplacement exact ;
+   - revalider partenaire, distance, Trade actif, propriété et contrôle du bot.
+
+8. **Abandon et partage de quête — À ADAPTER**
+   - endpoints `QUEST_ABANDON` et `QUEST_SHARE` ;
+   - valider présence de la quête, partageabilité, groupe, cible et état du bot.
+
+9. **Application/reset de talents — À ADAPTER AVEC PRUDENCE**
+   - endpoint `TALENT_APPLY` ;
+   - valider build, niveau, points, coûts/reset, combat, double spécialisation et effets runtime ;
+   - vérifier les API Playerbots/AzerothCore dans le dépôt local avant toute reprise.
+
+10. **Artisanat ciblé — À ADAPTER**
+    - étudier `CRAFT_RECIPE_TARGET` ;
+    - revalider profession, recette, matériaux, outils, cible exacte, compatibilité et état Trade.
+
+11. **Banque / banque de guilde / vendeur — COMPARER PUIS ADAPTER**
+    - ces familles existent déjà dans notre Bridge ;
+    - ne reprendre que les améliorations démontrables : emplacement exact, quantités, droits, proximité, validation ;
+    - ne considérer aucun endpoint vendeur supplémentaire comme acquis sans preuve dans le code.
+
+12. **Comptage d'inventaire / restauration de sélection — COMPARER PUIS ADAPTER**
+    - ne reprendre que les corrections démontrées par audit comparatif.
+
+### Fonctions et modèles explicitement rejetés
+
+- **`RUN~CAST_SPELL` générique : REJETER.**
+  - un `spellId` arbitraire avec cible élargit trop la surface d'action ;
+  - préférer des endpoints spécialisés et bornés comme `ENCHANT_TRADE_V1`.
+
+- **Tout exécuteur Bridge générique de commande Playerbots ou de texte libre : REJETER.**
+  - aucun nouvel endpoint ne doit transmettre une commande Playerbots arbitraire ;
+  - les helpers de type `HandleCommand()` ne sont pas un modèle pour les nouvelles fonctions.
+
+- **Toute logique contournant les validations serveur : REJETER.**
+  - permissions, contrôle du bot, session/map/Trade, longueurs, nombres, emplacements, quantités, rate limiting, erreurs structurées et timeouts restent obligatoires.
+
+- **Toute modification de `mod-playerbots` : INTERDITE.**
+
+### Règle d'intégration Extended
+
+Audit ciblé → Analyse comparative → classification `REPRENDRE` ou `ADAPTER` → validation utilisateur → patch minimal → vérifications → compilation si C++ → tests en jeu → audit final → archivage.
+
+Aucune fonction Extended ne doit être marquée comme intégrée avant validation runtime.
+
+### Attribution obligatoire
+
+- conserver le nom de Jellypowered et les hashes des commits réellement étudiés ;
+- chaque PR précise ce qui est repris, adapté, réécrit ou rejeté ;
+- reprise substantielle, lorsque pertinent :
   `Co-authored-by: Jellypowered <Jellypowered@gmail.com>` ;
-- une réécriture seulement inspirée mentionne :
+- réécriture seulement inspirée :
   `Design inspired by the Jellypowered bridge contribution.` ;
-- les crédits sont préparés pour la PR uniquement après validation des tests en jeu de la partie concernée ;
-- aucune attribution ne doit suggérer qu'une fonction non testée ou non intégrée est déjà livrée.
+- les crédits sont ajoutés uniquement pour les parties réellement intégrées et validées.
 
-Politique de tests :
+Statut : **audit Extended validé ; reprise sélective prioritaire avant la roadmap normale ; merge direct du fork interdit.**
 
-- les tests ciblés restent obligatoires après chaque patch ;
-- les tests exhaustifs transversaux de toutes les fonctions pourront être exécutés vers la fin du projet ;
-- ce report des tests exhaustifs ne permet pas de déclarer une fonction validée avant ses propres tests ciblés.
-
-Statut de reprise : contribution conservée comme source de référence. Les fonctions du projet déjà mergées sont suivies par leurs audits, patches et PR propres ; ce document ne doit pas déduire leur provenance sans preuve. Toute reprise future issue de cette contribution doit conserver l'attribution prévue ci-dessus et rester soumise au protocole Audit → Validation → Patch → Tests.
 
 ## Phase 0 — Assainissement documentaire — TERMINÉE
 

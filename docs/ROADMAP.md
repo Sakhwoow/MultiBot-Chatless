@@ -1,23 +1,23 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état post-merge du 14 août 2026.
-Dernière mise à jour : 14/08/2026 — service d'enchantement d'objet `ENCHANT_TRADE_V1` implémenté et validé en jeu, UI 440 px/i18n validées ; prochain chantier normal fixé à l'ajout/retrait d'items précis dans les règles de loot.
+Dernière mise à jour : 15/08/2026 — `ENCHANT_TRADE_V1` est mergé (Addon #63 / Bridge #27) et la suppression locale du dump inventaire automatique à l'ouverture d'un Trade est validée sans régression ; prochain chantier normal inchangé : ajout/retrait d'items précis dans les règles de loot.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
 
-Audit de synchronisation : `audit-multibot-roadmap-next-item-v1-2026-08-14-143927`.
+Audit de synchronisation : `audit-multibot-trade-inventory-whisper-spam-v1b-2026-08-15-004941`, complété par les patches runtime validés de suppression du dump Trade.
 
 - Addon : `L:\ChromieCraft_3.3.5a\Interface\AddOns\MultiBot`
   - branche `main` ;
-  - HEAD et `origin/main` : `106074c3c93f80812f73af27e746860c7c8a4dcf` ;
-  - merge PR #61 : **Add chatless group Roll UI** ;
-  - worktree propre au début et à la fin de l'audit.
+  - HEAD et `origin/main` avant le correctif Trade local : `2c827f0acf305030d9d97ed797f9c798a25daab3` ;
+  - merge PR #63 : **Add chatless Enchanting Trade Service UI** ;
+  - correctif local validé en jeu : suppression du dump inventaire automatique lors des ouvertures Trade Inventory, Enchanting et client WoW natif.
 - Bridge : `L:\AC_PB\azerothcore-wotlk\modules\mod-multibot-bridge`
   - branche `main` ;
-  - HEAD et `origin/main` : `210bd1f4f6597fe4f0691ec729ec4904ebe2d463` ;
-  - merge PR #26 : **Add chatless group Roll support** ;
-  - worktree propre au début et à la fin de l'audit.
+  - HEAD et `origin/main` : `112428373dbd5741b55028e3efca299480a769bb` ;
+  - merge PR #27 : **Add ENCHANT_TRADE_V1 native enchanting trade service** ;
+  - aucun changement requis pour le correctif de spam Trade.
 - Playerbots : `L:\AC_PB\azerothcore-wotlk\modules\mod-playerbots`
   - branche `master`, commit `a7b885d27134466dbc1c91d39b8241ea725a1bbb` ;
   - **lecture seule stricte** ; invariant avant/après audit : `OK`.
@@ -328,10 +328,11 @@ Ordre recommandé et état réel :
 6. **`s vendor` / `SELL_VENDOR` : TERMINÉ pour le chemin bridge-first inventaire** — `INVENTORY_BULK_SELL_V1`, validation serveur et résultat structuré ; fallback legacy de compatibilité conservé si la capacité n'est pas disponible.
 7. **`open items` / `OPEN_ITEMS` : TERMINÉ / VALIDÉ / MERGÉ** — `INVENTORY_OPEN_V1`, Addon PR #60, Bridge PR #25.
 8. **`roll` et `roll [item]` : TERMINÉ / VALIDÉ / MERGÉ** — `GROUP_ROLL_V1`, Addon PR #61, Bridge PR #26.
-9. **Enchantement d'objet : TERMINÉ / VALIDÉ EN JEU — PR EN COURS (Addon #63 / Bridge #27)** — `ENCHANT_TRADE_V1`, UI dédiée aux enchanteurs, liste des enchantements réellement connus, composants/outils, Trade WoW natif via le slot « ne sera pas échangé », exécution par ID de sort numérique validé côté bridge, sans exécuteur générique de cast/chat ; layout 440 px et i18n des 8 locales validés.
-10. **PROCHAIN CHANTIER NORMAL — Ajout/retrait d'items précis dans les règles de loot.**
-11. **À FAIRE — Décision sur `Quest`/`Skill` versus `Disenchant`**, sans inventer de stratégie absente de Playerbots.
-12. **À FAIRE — Ordres collectifs `follow`, `attack`, `stay`**, seulement après validation manuelle exacte des sélecteurs Playerbots ; ne pas réintroduire `RUN~ORDER` générique.
+9. **Enchantement d'objet : TERMINÉ / VALIDÉ EN JEU / MERGÉ — Addon #63 / Bridge #27** — `ENCHANT_TRADE_V1`, UI dédiée aux enchanteurs, liste des enchantements réellement connus, composants/outils, Trade WoW natif via le slot « ne sera pas échangé », exécution par ID de sort numérique validé côté bridge, sans exécuteur générique de cast/chat ; layout 440 px et i18n des 8 locales validés.
+10. **Spam inventaire automatique à l'ouverture Trade : TERMINÉ / VALIDÉ EN JEU — PR ADDON #64 EN COURS** — réutilisation puis généralisation du filtre addon existant : détection du header exact `=== Inventory ===` pour un bot connu, suppression du dump lors des chemins Inventory → Trade, Enchanting → Trade et du menu natif WoW « Échanger », sans modification de Playerbots ni du Bridge.
+11. **PROCHAIN CHANTIER NORMAL — Ajout/retrait d'items précis dans les règles de loot.**
+12. **À FAIRE — Décision sur `Quest`/`Skill` versus `Disenchant`**, sans inventer de stratégie absente de Playerbots.
+13. **À FAIRE — Ordres collectifs `follow`, `attack`, `stay`**, seulement après validation manuelle exacte des sélecteurs Playerbots ; ne pas réintroduire `RUN~ORDER` générique.
 
 Les commandes informatives `who`, `co ?`, `nc ?` et `ss ?` restent manuelles tant qu'aucune UI structurée ne les remplace. Les mutations UI automatiques `co/nc`, en revanche, doivent passer par le bridge dès qu'un contrat structuré validé existe.
 
@@ -346,7 +347,20 @@ Les commandes informatives `who`, `co ?`, `nc ?` et `ss ?` restent manuelles tan
 - UI dédiée visible uniquement pour les bots enchanteurs, accessible depuis l'EveryBar et Character Info ;
 - fenêtre réduite à 440 px, champ de recherche corrigé et textes Enchant Trade localisés dans les 8 locales runtime ;
 - test en jeu : ouverture, liste, recherche, tooltips, Trade et enchantement réel **OK** ;
-- spam chat automatique lié à ce service : **aucun**.
+- spam chat automatique lié au service Enchanting : **aucun après correctif Trade validé le 15/08/2026** ;
+- l'ouverture du Trade par l'UI Enchanting réutilise le filtre de dump inventaire déjà employé par Inventory → Trade.
+
+### Validation suppression du dump Inventory à l'ouverture Trade — 15/08/2026
+
+- cause auditée dans Playerbots en lecture seule : `TradeStatusAction::BeginTrade()` envoie automatiquement `=== Inventory ===` puis le contenu de l'inventaire au maître lors du démarrage d'un échange ;
+- `mod-playerbots` reste strictement inchangé ;
+- le filtre addon existant du bouton Inventory → Trade a d'abord été exporté puis réutilisé par les deux appels `InitiateTrade()` de l'UI Enchanting ;
+- le filtre a ensuite été généralisé côté addon pour reconnaître automatiquement le header exact `=== Inventory ===` provenant d'un bot connu uniquement lorsqu'une fenêtre Trade est ouverte, ce qui couvre aussi le menu contextuel natif WoW « Échanger » sans masquer la sortie manuelle `item count` hors Trade ;
+- le matching large sur le simple mot `Inventory` a été retiré afin d'éviter de masquer un whisper normal ;
+- tests en jeu : Inventory → Trade silencieux, Enchanting → Trade silencieux, menu natif WoW « Échanger » silencieux ;
+- enchantement réel et workflow Trade conservés ;
+- aucune régression observée par l'utilisateur ;
+- Bridge inchangé, Playerbots inchangé, aucun rebuild worldserver requis.
 
 ### Chantiers suspendus — à reprendre seulement après la roadmap normale
 

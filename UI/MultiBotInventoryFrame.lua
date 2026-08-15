@@ -76,8 +76,44 @@ local function isTradeInventoryDumpStart(message)
         return false
     end
 
-    return string.find(message, "Inventory", 1, true) ~= nil
-        or string.find(message, "背包", 1, true) ~= nil
+    return message == "=== Inventory ==="
+        or message == "=== 背包 ==="
+end
+
+local function isKnownInventoryBotAuthor(author)
+    local authorKey = normalizeInventoryAuthorName(author)
+    if authorKey == "" then
+        return false
+    end
+
+    local playerName = UnitName and UnitName("player") or nil
+    if playerName and normalizeInventoryAuthorName(playerName) == authorKey then
+        return false
+    end
+
+    local actives = MultiBot and MultiBot.index and MultiBot.index.actives or nil
+    if type(actives) == "table" then
+        for _, botName in pairs(actives) do
+            if normalizeInventoryAuthorName(botName) == authorKey then
+                return true
+            end
+        end
+    end
+
+    local units = MultiBot
+        and MultiBot.frames
+        and MultiBot.frames["MultiBar"]
+        and MultiBot.frames["MultiBar"].frames
+        and MultiBot.frames["MultiBar"].frames["Units"]
+    if units and type(units.frames) == "table" then
+        for botName in pairs(units.frames) do
+            if normalizeInventoryAuthorName(botName) == authorKey then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 local function isTradeInventoryDumpEnd(message)
@@ -111,24 +147,44 @@ end
 
 local function shouldSuppressTradeInventoryWhisper(message, author)
     local inventory = MultiBot and MultiBot.inventory or nil
-    local state = inventory and inventory.tradeInventoryDumpFilter or nil
-    if type(state) ~= "table" then
+    if not inventory then
         return false
     end
 
     local now = inventoryFrameNow()
-    if state.expiresAt and now > state.expiresAt then
-        inventory.tradeInventoryDumpFilter = nil
-        return false
-    end
+    local authorKey = normalizeInventoryAuthorName(author)
+    local state = inventory.tradeInventoryDumpFilter
 
-    if normalizeInventoryAuthorName(author) ~= state.botKey then
-        return false
+    if type(state) == "table" and state.expiresAt and now > state.expiresAt then
+        inventory.tradeInventoryDumpFilter = nil
+        state = nil
     end
 
     if isTradeInventoryDumpStart(message) then
-        state.active = true
-        return true
+        if type(state) == "table" and authorKey == state.botKey then
+            state.active = true
+            return true
+        end
+
+        if isKnownInventoryBotAuthor(author)
+            and TradeFrame
+            and TradeFrame.IsShown
+            and TradeFrame:IsShown()
+        then
+            inventory.tradeInventoryDumpFilter = {
+                botKey = authorKey,
+                expiresAt = now + TRADE_INVENTORY_DUMP_FILTER_TTL,
+                active = true,
+                autoDetected = true,
+            }
+            return true
+        end
+
+        return false
+    end
+
+    if type(state) ~= "table" or authorKey ~= state.botKey then
+        return false
     end
 
     if not state.active then
@@ -192,6 +248,8 @@ local function suppressNextTradeInventoryDump(botName)
         active = false,
     }
 end
+
+MultiBot.SuppressNextTradeInventoryDump = suppressNextTradeInventoryDump
 
 local function clearTradeInventoryDumpFilter()
     if MultiBot.inventory then
@@ -1362,6 +1420,7 @@ function MultiBot.InitializeInventoryFrame()
     }
 
     MultiBot.inventory = inventory
+    ensureTradeInventoryDumpFilter()
 
     content.actionHost.inventoryRef = inventory
     for _, button in pairs(content.buttons) do

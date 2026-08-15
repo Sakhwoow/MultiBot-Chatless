@@ -533,6 +533,9 @@ function EnchantUI:ApplySelected()
     end
 
     if TradeFrame and TradeFrame.IsShown and not TradeFrame:IsShown() and InitiateTrade then
+        if MultiBot.SuppressNextTradeInventoryDump then
+            MultiBot.SuppressNextTradeInventoryDump(self.botName)
+        end
         InitiateTrade(self.botName)
         frame.status:SetText(L("enchant.trade.status.trade_requested", "Trade requested. Put your item in the Will not be traded slot, then click Enchant again."))
         return false
@@ -581,6 +584,9 @@ function EnchantUI:Open(botName)
     setButtonEnabled(frame.refresh, true)
 
     if TradeFrame and TradeFrame.IsShown and not TradeFrame:IsShown() and InitiateTrade then
+        if MultiBot.SuppressNextTradeInventoryDump then
+            MultiBot.SuppressNextTradeInventoryDump(botName)
+        end
         InitiateTrade(botName)
     end
     self:RequestList()

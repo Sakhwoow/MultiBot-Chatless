@@ -169,6 +169,8 @@ still work when the player explicitly wants to inspect a bot state.
 The goal is not to remove useful manual commands.  
 The goal is to remove automatic UI-refresh spam.
 
+The remaining legacy Playerbots Trade inventory dump is also suppressed locally by the addon. The filter recognizes the exact `=== Inventory ===` dump from known bots and hides that automatic dump for Inventory -> Trade, Enchanting -> Trade and the native WoW client Trade action, while leaving the Trade workflow itself unchanged.
+
 ### Warlock weapon-enchant diagnostic
 
 For targeted runtime diagnostics, the addon exposes:
@@ -261,6 +263,10 @@ The endpoint and safe Firestone/Spellstone switching code are present, but the p
   <tr>
     <td>Enchanting Trade Service</td>
     <td><strong>Bridge-first and runtime validated</strong> — <code>ENCHANT_TRADE_V1</code> exposes known Enchanting services, reagent/tool availability and native Trade-slot execution without a generic cast/chat executor; the same dedicated window is available from the enchanter EveryBar and Character Info, with UI text localized in all eight runtime locales</td>
+  </tr>
+  <tr>
+    <td>Trade inventory chat suppression</td>
+    <td><strong>Runtime validated</strong> — the legacy Playerbots <code>=== Inventory ===</code> Trade-start dump is hidden for Inventory, Enchanting and native client Trade openings; the filter is limited to the exact dump sequence from known bots and does not modify Playerbots or the Bridge</td>
   </tr>
   <tr>
     <td>Glyphs</td>

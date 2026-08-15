@@ -166,7 +166,11 @@ local function shouldSuppressTradeInventoryWhisper(message, author)
             return true
         end
 
-        if isKnownInventoryBotAuthor(author) then
+        if isKnownInventoryBotAuthor(author)
+            and TradeFrame
+            and TradeFrame.IsShown
+            and TradeFrame:IsShown()
+        then
             inventory.tradeInventoryDumpFilter = {
                 botKey = authorKey,
                 expiresAt = now + TRADE_INVENTORY_DUMP_FILTER_TTL,

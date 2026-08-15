@@ -17,6 +17,7 @@ local OUTFIT_CAPABILITY = "OUTFIT_V1"
 local INVENTORY_CAPABILITY = "INVENTORY_V1"
 local INVENTORY_EXACT_CAPABILITY = "INVENTORY_EXACT_V1"
 local INVENTORY_ITEM_MOVE_CAPABILITY = "ITEM_MOVE_V1"
+local INVENTORY_ITEM_EQUIP_CAPABILITY = "ITEM_EQUIP_V1"
 local INVENTORY_BULK_SELL_CAPABILITY = "INVENTORY_BULK_SELL_V1"
 local INVENTORY_OPEN_CAPABILITY = "INVENTORY_OPEN_V1"
 local GROUP_ROLL_CAPABILITY = "GROUP_ROLL_V1"
@@ -24,7 +25,9 @@ local ENCHANT_TRADE_CAPABILITY = "ENCHANT_TRADE_V1"
 local GROUP_ROLL_TIMEOUT_SECONDS = 5.0
 local ENCHANT_TRADE_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_TIMEOUT_SECONDS = 5.0
+local INVENTORY_ITEM_EQUIP_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_MAX_COUNT = 1000
+local INVENTORY_ITEM_EQUIP_MAX_COUNT = 1000
 local ENCHANT_TRADE_MAX_ACTIVE = 8
 local GROUP_ROLL_MAX_ITEM_LINK_LENGTH = 160
 local STATE_TIMEOUT_SECONDS = 5.0
@@ -245,6 +248,7 @@ local function ensureBridgeState()
   state.inventoryCapable = state.inventoryCapable or false
   state.inventoryExactCapable = state.inventoryExactCapable or false
   state.inventoryItemMoveCapable = state.inventoryItemMoveCapable or false
+  state.inventoryItemEquipCapable = state.inventoryItemEquipCapable or false
   state.inventoryBulkSellCapable = state.inventoryBulkSellCapable or false
   state.inventoryOpenCapable = state.inventoryOpenCapable or false
   state.groupRollCapable = state.groupRollCapable or false
@@ -280,6 +284,8 @@ local function ensureBridgeState()
   state.inventoryExactSnapshots = state.inventoryExactSnapshots or {}
   state.inventoryItemMoveSeq = state.inventoryItemMoveSeq or 0
   state.inventoryItemMoves = state.inventoryItemMoves or {}
+  state.inventoryItemEquipSeq = state.inventoryItemEquipSeq or 0
+  state.inventoryItemEquips = state.inventoryItemEquips or {}
   state.bankItems = state.bankItems or {}
   state.bankSeq = state.bankSeq or 0
   state.bankActive = state.bankActive or nil
@@ -1668,6 +1674,68 @@ function Comm.RunInventoryItemMove(name, srcBag, srcSlot, srcItemId, srcCount, d
   return token
 end
 
+function Comm.IsInventoryItemEquipCapable()
+  local state = ensureBridgeState()
+  return state.connected == true and state.inventoryExactCapable == true and state.inventoryItemEquipCapable == true
+end
+
+function Comm.RunInventoryItemEquip(name, srcBag, srcSlot, srcItemId, srcCount)
+  local state = ensureBridgeState()
+  name = trim(name)
+
+  srcBag = parseBoundedInteger(tostring(srcBag or ""), 0, 255)
+  srcSlot = parseBoundedInteger(tostring(srcSlot or ""), 0, 255)
+  srcItemId = parseBoundedInteger(tostring(srcItemId or ""), 1, 4294967295)
+  srcCount = parseBoundedInteger(tostring(srcCount or ""), 1, INVENTORY_ITEM_EQUIP_MAX_COUNT)
+
+  if name == "" or not state.connected or state.inventoryExactCapable ~= true or state.inventoryItemEquipCapable ~= true then
+    return false
+  end
+  if not srcBag or not srcSlot or not srcItemId or not srcCount then
+    return false
+  end
+
+  state.inventoryItemEquipSeq = (tonumber(state.inventoryItemEquipSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-equip-" .. tostring(state.inventoryItemEquipSeq)
+  local command = {
+    token = token,
+    botName = name,
+    botNameKey = string.lower(name),
+    srcBag = srcBag,
+    srcSlot = srcSlot,
+    srcItemId = srcItemId,
+    srcCount = srcCount,
+    startedAt = safeNow(),
+  }
+  state.inventoryItemEquips[token] = command
+
+  local payload = table.concat({
+    "ITEM_EQUIP", name, token,
+    tostring(srcBag), tostring(srcSlot), tostring(srcItemId), tostring(srcCount),
+  }, "~")
+
+  if not Comm.Send("RUN", payload) then
+    state.inventoryItemEquips[token] = nil
+    return false
+  end
+
+  safeDelay(INVENTORY_ITEM_EQUIP_TIMEOUT_SECONDS, function()
+    local bridge = ensureBridgeState()
+    local pending = bridge.inventoryItemEquips and bridge.inventoryItemEquips[token] or nil
+    if not pending then
+      return
+    end
+
+    bridge.inventoryItemEquips[token] = nil
+    bridge.lastError = "ITEM_EQUIP_TIMEOUT"
+    if bridge.connected and Comm.RequestInventoryExact then
+      Comm.RequestInventoryExact(pending.botName)
+    end
+  end)
+
+  return token
+end
+
 function Comm.RequestBank(name)
   local state = ensureBridgeState()
   name = trim(name)
@@ -2155,6 +2223,7 @@ function Comm.MarkDisconnected(reason)
     end
   end
   state.inventoryItemMoves = {}
+  state.inventoryItemEquips = {}
 
   state.bankActive = nil
   state.guildBankActive = nil
@@ -2209,6 +2278,7 @@ function Comm.MarkDisconnected(reason)
   state.inventoryCapable = false
   state.inventoryExactCapable = false
   state.inventoryItemMoveCapable = false
+  state.inventoryItemEquipCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
@@ -3960,6 +4030,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.outfitCapable = false
     state.inventoryCapable = false
     state.inventoryExactCapable = false
+    state.inventoryItemEquipCapable = false
     state.inventoryBulkSellCapable = false
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
@@ -3978,6 +4049,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.inventoryExactCapable = true
       elseif capability == INVENTORY_ITEM_MOVE_CAPABILITY then
         state.inventoryItemMoveCapable = true
+      elseif capability == INVENTORY_ITEM_EQUIP_CAPABILITY then
+        state.inventoryItemEquipCapable = true
       elseif capability == INVENTORY_BULK_SELL_CAPABILITY then
         state.inventoryBulkSellCapable = true
       elseif capability == INVENTORY_OPEN_CAPABILITY then
@@ -4739,6 +4812,61 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     end
 
     debugPrint("ADDON:RX", "INVENTORY_ITEM_MOVE", botName, token, status, reason, srcBag, srcSlot, dstBag, dstSlot)
+    return true
+  end
+
+  if opcode == "INVENTORY_ITEM_EQUIP" then
+    local fields = splitFields(payload)
+    if #fields ~= 7 then
+      state.lastError = "ITEM_EQUIP_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = urlDecodeFieldStrict(fields[4], 64, false)
+    local srcBag = parseBoundedInteger(fields[5], 0, 255)
+    local srcSlot = parseBoundedInteger(fields[6], 0, 255)
+    local dstSlot = parseBoundedInteger(fields[7], 0, 255)
+
+    state.connected = true
+    local command = state.inventoryItemEquips and state.inventoryItemEquips[token] or nil
+    if not botName or not isValidStateToken(token) or (status ~= "OK" and status ~= "ERR") or not reason or
+      srcBag == nil or srcSlot == nil or dstSlot == nil then
+      state.lastError = "ITEM_EQUIP_BAD_RESPONSE"
+      if command then
+        state.inventoryItemEquips[token] = nil
+        if Comm.RequestInventoryExact then
+          Comm.RequestInventoryExact(command.botName)
+        end
+      end
+      return true
+    end
+
+    if not command then
+      return true
+    end
+
+    local responseMatches = string.lower(botName) == command.botNameKey and
+      srcBag == command.srcBag and srcSlot == command.srcSlot
+
+    state.inventoryItemEquips[token] = nil
+    if not responseMatches then
+      status = "ERR"
+      reason = "RESPONSE_MISMATCH"
+      state.lastError = "ITEM_EQUIP_RESPONSE_MISMATCH"
+    elseif status == "OK" then
+      state.lastError = nil
+    else
+      state.lastError = "ITEM_EQUIP_" .. reason
+    end
+
+    if Comm.RequestInventoryExact then
+      Comm.RequestInventoryExact(command.botName)
+    end
+
+    debugPrint("ADDON:RX", "INVENTORY_ITEM_EQUIP", botName, token, status, reason, srcBag, srcSlot, dstSlot)
     return true
   end
 
@@ -5720,6 +5848,7 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryCapable = false
   state.inventoryExactCapable = false
   state.inventoryItemMoveCapable = false
+  state.inventoryItemEquipCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false

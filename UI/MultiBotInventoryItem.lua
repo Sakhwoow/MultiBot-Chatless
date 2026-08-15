@@ -409,6 +409,32 @@ local function runBridgeInventoryItemAction(action, button, botName, options)
     return true
 end
 
+local function runBridgeInventoryItemEquip(button, botName)
+    if not button or not button.item or not botName or botName == "" then
+        return false
+    end
+
+    local item = button.item
+    if item.exactLocation ~= true then
+        return false
+    end
+
+    local srcBag = tonumber(item.bag)
+    local srcSlot = tonumber(item.slot)
+    local itemId = tonumber(item.id or 0) or 0
+    local count = tonumber(item._serverCount or item.count or 1) or 1
+    if srcBag == nil or srcSlot == nil or itemId <= 0 or count < 1 then
+        return false
+    end
+
+    if not MultiBot.Comm or not MultiBot.Comm.RunInventoryItemEquip then
+        return false
+    end
+
+    local token = MultiBot.Comm.RunInventoryItemEquip(botName, srcBag, srcSlot, itemId, count)
+    return token and true or false
+end
+
 local function handleInventoryItemClick(button)
     local action, botName = getInventoryItemActionState()
     local item = button and button.item or nil
@@ -446,7 +472,16 @@ local function handleInventoryItemClick(button)
         return
     end
 
-    if action == "e" or action == "give" then
+    if action == "e" then
+        if runBridgeInventoryItemEquip(button, botName) then
+            return
+        end
+
+        sendInventoryItemCommand(action, button, botName)
+        return
+    end
+
+    if action == "give" then
         sendInventoryItemCommand(action, button, botName)
         return
     end

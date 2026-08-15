@@ -623,6 +623,96 @@ function MultiBot.OnBridgeInventoryItemActionResult(botName, action, itemId, res
     end
 end
 
+local function cloneInventoryExactItem(sourceItem, location)
+    if type(location) ~= "table" then
+        return nil
+    end
+
+    local numericItemId = tonumber(location.itemId or 0) or 0
+    if numericItemId <= 0 then
+        return nil
+    end
+
+    local itemId = tostring(numericItemId)
+    local item = {}
+    if type(sourceItem) == "table" then
+        for key, value in pairs(sourceItem) do
+            item[key] = value
+        end
+    end
+
+    local itemName, itemLink, itemRare, _, _, itemType, _, _, _, _, _, itemClassID = GetItemInfo(numericItemId)
+    if itemClassID == nil and GetItemInfoInstant then
+        local _, _, _, _, _, instantClassID = GetItemInfoInstant(numericItemId)
+        itemClassID = instantClassID
+    end
+
+    item.id = itemId
+    item.icon = item.icon or GetItemIcon(numericItemId)
+    item.name = item.name or itemName or ("Item " .. itemId)
+    item.link = item.link or itemLink or item.name
+    item.rare = item.rare or itemRare or 1
+    item.classID = item.classID or itemClassID
+    item.type = item.type or itemType
+
+    local count = math.max(1, tonumber(location.count or 1) or 1)
+    item.count = count > 1 and count or nil
+    item._serverCount = count
+    item.bag = tonumber(location.bag or 0) or 0
+    item.slot = tonumber(location.slot or 0) or 0
+    item.soulbound = location.soulbound == true
+    item.exactLocation = true
+
+    return item
+end
+
+MultiBot.InventoryAddExactItem = function(frame, sourceItem, location, layoutIndex)
+    if not frame or not frame.addButton then
+        return nil
+    end
+
+    local item = cloneInventoryExactItem(sourceItem, location)
+    if not item then
+        return nil
+    end
+
+    local index = math.max(0, tonumber(layoutIndex or frame.index or 0) or 0)
+    local itemX, itemY
+    if frame.getSlotPosition then
+        itemX, itemY = frame:getSlotPosition(index)
+    else
+        local previousIndex = frame.index
+        frame.index = index
+        itemX, itemY = getInventoryItemPosition(frame)
+        frame.index = previousIndex
+    end
+
+    local buttonKey = string.format("Exact_%d_%d", item.bag, item.slot)
+    local button = frame.addButton(buttonKey, itemX, itemY, item.icon, item.link, index)
+    if not button then
+        return nil
+    end
+
+    item.index = index
+    item.x = itemX
+    item.y = itemY
+    button.item = item
+    local inventory = MultiBot.inventory
+    if inventory and inventory.configureExactItemButton then
+        inventory:configureExactItemButton(button, item)
+    end
+    if type(item.link) == "string" and string.sub(item.link, 1, 1) == "|" then
+        button.doLeft = handleInventoryItemClick
+    end
+
+    if item.count then
+        button.setAmount(item.count)
+    end
+
+    frame.index = math.max(frame.index or 0, index + 1)
+    return button
+end
+
 MultiBot.InventoryAddItem = function(frame, itemInfo)
     if not frame then
         return nil

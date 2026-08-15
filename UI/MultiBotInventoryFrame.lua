@@ -5,7 +5,7 @@ local INVENTORY_WINDOW_DEFAULTS = {
     height = 470,
     pointX = -700,
     pointY = -144,
-    actionsWidth = 110,
+    actionsWidth = 120,
     panelInset = 8,
     panelGap = 6,
     buttonSize = 32,
@@ -14,12 +14,10 @@ local INVENTORY_WINDOW_DEFAULTS = {
     buttonStartOffsetY = 124,
     modeLabelHeight = 36,
     modeValueHeight = 20,
-    helperTextOffsetY = 4,
-    helperTextHeight = 28,
     instantActionsTopPadding = 18,
     instantActionColumns = 3,
-    instantActionSpacingX = 29,
-    instantActionSpacingY = 34,
+    instantActionSpacingX = 36,
+    instantActionSpacingY = 38,
     modeActionColumns = 2,
     modeActionSpacingX = 36,
     modeActionSpacingY = 36,
@@ -32,6 +30,15 @@ local INVENTORY_WINDOW_DEFAULTS = {
     itemsPanelPadding = 8,
     scrollBarAllowance = 28,
     minCanvasHeight = 260,
+    containerBarHeight = 46,
+    containerBarGap = 4,
+    containerButtonSize = 32,
+    containerButtonSpacing = 6,
+    containerBarInset = 6,
+    containerGroupHeaderHeight = 18,
+    containerGroupPadding = 6,
+    containerGroupGap = 8,
+    containerGroupBackdropAlpha = 0.24,
 }
 local INVENTORY_LAYOUT_KEY = "InventoryPoint"
 
@@ -453,6 +460,10 @@ local function makeItemsContainer(parent, scrollChild)
         spacingX = INVENTORY_WINDOW_DEFAULTS.itemSpacingX,
         spacingY = INVENTORY_WINDOW_DEFAULTS.itemSpacingY,
         itemsPerRow = INVENTORY_WINDOW_DEFAULTS.itemsPerRow,
+        suspendLayout = false,
+        visualGroups = {},
+        visualGroupFrames = {},
+        groupedContentHeight = nil,
     }
 
     function items:getName()
@@ -481,12 +492,83 @@ local function makeItemsContainer(parent, scrollChild)
         self.child:SetWidth(math.max(usableWidth, self.itemsPerRow * stepX))
     end
 
-    function items:getNextSlotPosition()
+    function items:getSlotPosition(layoutIndex)
         self:refreshLayoutMetrics()
         local perRow = math.max(1, self.itemsPerRow or 1)
-        local posX = (self.index % perRow) * (self.spacingX or 0)
-        local posY = math.floor(self.index / perRow) * -(self.spacingY or 0)
+        local index = math.max(0, tonumber(layoutIndex or 0) or 0)
+        local posX = (index % perRow) * (self.spacingX or 0)
+        local posY = math.floor(index / perRow) * -(self.spacingY or 0)
         return posX, posY
+    end
+
+    function items:getNextSlotPosition()
+        return self:getSlotPosition(self.index or 0)
+    end
+
+    function items:clearVisualGroups()
+        for _, frame in pairs(self.visualGroupFrames or {}) do
+            if frame and frame.Hide then
+                frame:Hide()
+            end
+        end
+        self.visualGroups = {}
+        self.groupedContentHeight = nil
+    end
+
+    function items:getOrCreateVisualGroupFrame(groupKey)
+        if not groupKey or groupKey == "" then
+            return nil
+        end
+
+        self.visualGroupFrames = self.visualGroupFrames or {}
+        local frame = self.visualGroupFrames[groupKey]
+        if frame then
+            return frame
+        end
+
+        frame = CreateFrame("Frame", nil, self.child)
+        frame:EnableMouse(false)
+        addSimpleBackdrop(frame, INVENTORY_WINDOW_DEFAULTS.containerGroupBackdropAlpha)
+        if frame.SetBackdropBorderColor then
+            frame:SetBackdropBorderColor(0.42, 0.42, 0.42, 0.92)
+        end
+        if frame.SetFrameLevel and self.child and self.child.GetFrameLevel then
+            frame:SetFrameLevel((self.child:GetFrameLevel() or 0) + 1)
+        end
+
+        frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        frame.title:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -6)
+        frame.title:SetJustifyH("LEFT")
+        frame.title:SetText("")
+
+        self.visualGroupFrames[groupKey] = frame
+        return frame
+    end
+
+    function items:setVisualGroups(groups)
+        self:clearVisualGroups()
+        self.visualGroups = groups or {}
+
+        for _, group in ipairs(self.visualGroups) do
+            if group.decorated ~= false and group.key then
+                local frame = self:getOrCreateVisualGroupFrame(group.key)
+                group.frame = frame
+                if frame then
+                    if frame.title then
+                        frame.title:SetText(group.label or "")
+                    end
+                    frame:Show()
+                end
+            end
+        end
+    end
+
+    function items:assignButtonToVisualGroup(button, groupKey, localIndex)
+        if not button then
+            return
+        end
+        button.__mbVisualGroupKey = groupKey
+        button.__mbVisualGroupIndex = math.max(0, tonumber(localIndex or 0) or 0)
     end
 
     function items:addChatItem(itemInfo)
@@ -498,6 +580,7 @@ local function makeItemsContainer(parent, scrollChild)
     end
 
     function items:clear()
+        self:clearVisualGroups()
         for key, button in pairs(self.buttons) do
             if button and button.Hide then
                 button:Hide()
@@ -510,6 +593,11 @@ local function makeItemsContainer(parent, scrollChild)
 
     function items:updateCanvas()
         self:refreshLayoutMetrics()
+
+        if self.groupedContentHeight then
+            self.child:SetHeight(math.max(INVENTORY_WINDOW_DEFAULTS.minCanvasHeight, self.groupedContentHeight))
+            return
+        end
 
         local count = math.max(self.index or 0, 0)
         if count == 0 then
@@ -526,6 +614,82 @@ local function makeItemsContainer(parent, scrollChild)
     function items:updateLayout()
         self:refreshLayoutMetrics()
 
+        local groups = self.visualGroups or {}
+        if #groups > 0 then
+            local perRow = math.max(1, self.itemsPerRow or 1)
+            local spacingX = self.spacingX or self.iconSize
+            local spacingY = self.spacingY or self.iconSize
+            local padding = INVENTORY_WINDOW_DEFAULTS.containerGroupPadding
+            local headerHeight = INVENTORY_WINDOW_DEFAULTS.containerGroupHeaderHeight
+            local gap = INVENTORY_WINDOW_DEFAULTS.containerGroupGap
+            local cursorY = 0
+            local groupedButtons = {}
+
+            for _, button in pairs(self.buttons) do
+                if button and button.__mbVisualGroupKey then
+                    local key = button.__mbVisualGroupKey
+                    groupedButtons[key] = groupedButtons[key] or {}
+                    table.insert(groupedButtons[key], button)
+                end
+            end
+
+            for _, group in ipairs(groups) do
+                local slotCount = math.max(0, tonumber(group.slotCount or 0) or 0)
+                local decorated = group.decorated ~= false
+                local groupHeaderHeight = decorated and headerHeight or 0
+                local groupPadding = decorated and padding or 0
+                local rows = slotCount > 0 and math.ceil(slotCount / perRow) or 0
+                local itemAreaHeight = rows > 0 and (((rows - 1) * spacingY) + self.iconSize) or 0
+                local groupHeight = groupHeaderHeight + groupPadding + itemAreaHeight + groupPadding
+                local itemTopY = cursorY + groupHeaderHeight + groupPadding
+
+                if group.frame then
+                    group.frame:ClearAllPoints()
+                    group.frame:SetPoint("TOPLEFT", self.child, "TOPLEFT", 0, -cursorY)
+                    group.frame:SetWidth(self:getAvailableWidth())
+                    group.frame:SetHeight(math.max(1, groupHeight))
+                    group.frame:Show()
+                end
+
+                for _, button in ipairs(groupedButtons[group.key] or {}) do
+                    if button and button.ClearAllPoints then
+                        local localIndex = math.max(0, tonumber(button.__mbVisualGroupIndex or 0) or 0)
+                        local posX = groupPadding + ((localIndex % perRow) * spacingX)
+                        local posY = -(itemTopY + (math.floor(localIndex / perRow) * spacingY))
+                        button:ClearAllPoints()
+                        button:SetPoint("TOPLEFT", self.child, "TOPLEFT", posX, posY)
+                        button.x = posX
+                        button.y = posY
+                    end
+                end
+
+                cursorY = cursorY + groupHeight + (decorated and gap or 0)
+            end
+
+            local ungroupedIndex = 0
+            for _, button in pairs(self.buttons) do
+                if button and not button.__mbVisualGroupKey and button.ClearAllPoints then
+                    local posX = (ungroupedIndex % perRow) * spacingX
+                    local posY = -(cursorY + (math.floor(ungroupedIndex / perRow) * spacingY))
+                    button:ClearAllPoints()
+                    button:SetPoint("TOPLEFT", self.child, "TOPLEFT", posX, posY)
+                    button.x = posX
+                    button.y = posY
+                    ungroupedIndex = ungroupedIndex + 1
+                end
+            end
+
+            if ungroupedIndex > 0 then
+                local ungroupedRows = math.ceil(ungroupedIndex / perRow)
+                cursorY = cursorY + (((ungroupedRows - 1) * spacingY) + self.iconSize)
+            end
+
+            self.groupedContentHeight = cursorY + 4
+            self:updateCanvas()
+            return
+        end
+
+        self.groupedContentHeight = nil
         for _, button in pairs(self.buttons) do
             if button and button.ClearAllPoints then
                 local layoutIndex = button.layoutIndex or 0
@@ -541,10 +705,13 @@ local function makeItemsContainer(parent, scrollChild)
         self:updateCanvas()
     end
 
-    function items.addButton(pName, pX, pY, pTexture, pTip)
+    function items.addButton(pName, pX, pY, pTexture, pTip, pLayoutIndex)
         local button = CreateFrame("Button", nil, items.child)
         button:SetSize(items.iconSize, items.iconSize)
         button:SetPoint("TOPLEFT", items.child, "TOPLEFT", pX, pY)
+        if button.SetFrameLevel and items.child and items.child.GetFrameLevel then
+            button:SetFrameLevel((items.child:GetFrameLevel() or 0) + 2)
+        end
         button:RegisterForClicks("LeftButtonDown", "RightButtonDown")
         button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
         button:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
@@ -563,7 +730,7 @@ local function makeItemsContainer(parent, scrollChild)
         button.tip = pTip
         button.texture = MultiBot.SafeTexturePath(pTexture)
         button.size = items.iconSize
-        button.layoutIndex = items.index or 0
+        button.layoutIndex = math.max(0, tonumber(pLayoutIndex or items.index or 0) or 0)
         button.x = pX
         button.y = pY
 
@@ -603,6 +770,10 @@ local function makeItemsContainer(parent, scrollChild)
         end)
 
         button:SetScript("OnClick", function(self, mouseButton)
+            if mouseButton == "LeftButton" and self.__mbSuppressNextLeftClick then
+                return
+            end
+
             if mouseButton == "LeftButton" and self.doLeft then
                 self.doLeft(self)
                 return
@@ -614,11 +785,213 @@ local function makeItemsContainer(parent, scrollChild)
         end)
 
         items.buttons[pName] = button
-        items:updateLayout()
+        if not items.suspendLayout then
+            items:updateLayout()
+        end
+        return button
+    end
+
+    function items:addEmptySlot(layoutIndex, slotKey, exactSlot)
+        local index = math.max(0, tonumber(layoutIndex or 0) or 0)
+        local key = slotKey or ("Empty_" .. tostring(index))
+        local posX, posY = self:getSlotPosition(index)
+        local button = CreateFrame("Button", nil, self.child)
+        button:SetSize(self.iconSize, self.iconSize)
+        button:SetPoint("TOPLEFT", self.child, "TOPLEFT", posX, posY)
+        if button.SetFrameLevel and self.child and self.child.GetFrameLevel then
+            button:SetFrameLevel((self.child:GetFrameLevel() or 0) + 2)
+        end
+        button.layoutIndex = index
+        button.x = posX
+        button.y = posY
+        button.emptySlot = true
+        button.__mbExactSlot = exactSlot
+
+        local moveCapable = exactSlot and MultiBot.Comm and MultiBot.Comm.IsInventoryItemMoveCapable and
+            MultiBot.Comm.IsInventoryItemMoveCapable()
+        button:EnableMouse(moveCapable and true or false)
+        if moveCapable then
+            button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        end
+        addSimpleBackdrop(button, 0.42)
+
+        self.buttons[key] = button
+        if not self.suspendLayout then
+            self:updateLayout()
+        end
         return button
     end
 
     return items
+end
+
+local function getInventoryContainerFallbackTexture(kind)
+    if kind == "BACKPACK" then
+        return "Interface\\Buttons\\Button-Backpack-Up"
+    end
+
+    if kind == "KEYRING" then
+        return "Interface\\Buttons\\UI-Button-KeyRing"
+    end
+
+    return MultiBot.SafeTexturePath("inv_misc_bag_10")
+end
+
+local function configureInventoryContainerIcon(button, kind)
+    if not button or not button.icon then
+        return
+    end
+
+    button.icon:ClearAllPoints()
+
+    if kind == "KEYRING" then
+        button.icon:SetSize(13, 28)
+        button.icon:SetPoint("CENTER", button, "CENTER", 0, 0)
+        button.icon:SetTexCoord(0, 0.5625, 0, 0.609375)
+        return
+    end
+
+    button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+    button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+    button.icon:SetTexCoord(0, 1, 0, 1)
+end
+
+local function getInventoryContainerLabel(kind, bagIndex)
+    if kind == "BACKPACK" then
+        return (BACKPACK_TOOLTIP and tostring(BACKPACK_TOOLTIP))
+            or MultiBot.L("inventory.container.backpack", "Backpack")
+    end
+
+    if kind == "KEYRING" then
+        return (KEYRING and tostring(KEYRING))
+            or MultiBot.L("inventory.container.keyring", "Keyring")
+    end
+
+    return string.format(MultiBot.L("inventory.container.bag", "Bag %d"), tonumber(bagIndex or 1) or 1)
+end
+
+local function buildInventoryContainerKey(entry)
+    if type(entry) ~= "table" then
+        return nil
+    end
+
+    return table.concat({
+        tostring(entry.kind or ""),
+        tostring(tonumber(entry.bag or 0) or 0),
+        tostring(tonumber(entry.slotStart or 0) or 0),
+    }, ":")
+end
+
+local function getInventoryContainerSnapshotLabel(inventory, entry)
+    local containerKey = buildInventoryContainerKey(entry)
+    for _, button in pairs(inventory and inventory.containerButtons or {}) do
+        if button and button.containerKey == containerKey and button.definition and button.definition.label then
+            return button.definition.label
+        end
+    end
+
+    if entry and entry.kind == "BACKPACK" then
+        return getInventoryContainerLabel("BACKPACK")
+    end
+    if entry and entry.kind == "KEYRING" then
+        return getInventoryContainerLabel("KEYRING")
+    end
+
+    return string.format(
+        MultiBot.L("inventory.container.bag", "Bag %d"),
+        tonumber(entry and entry.bag or 0) or 0
+    )
+end
+
+local function createInventoryContainerBar(parent)
+    local bar = CreateFrame("Frame", nil, parent)
+    bar:SetPoint("BOTTOMLEFT", parent, "BOTTOMLEFT", INVENTORY_WINDOW_DEFAULTS.containerBarInset, INVENTORY_WINDOW_DEFAULTS.containerBarInset)
+    bar:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -INVENTORY_WINDOW_DEFAULTS.containerBarInset, INVENTORY_WINDOW_DEFAULTS.containerBarInset)
+    bar:SetHeight(INVENTORY_WINDOW_DEFAULTS.containerBarHeight)
+    addSimpleBackdrop(bar, 0.62)
+
+    local buttonSize = INVENTORY_WINDOW_DEFAULTS.containerButtonSize
+    local spacing = INVENTORY_WINDOW_DEFAULTS.containerButtonSpacing
+    local totalWidth = (buttonSize * 6) + (spacing * 5)
+    local buttons = {}
+    local definitions = {
+        { key = "Backpack", kind = "BACKPACK", label = getInventoryContainerLabel("BACKPACK") },
+        { key = "Bag1", kind = "BAG", bagIndex = 1, label = getInventoryContainerLabel("BAG", 1) },
+        { key = "Bag2", kind = "BAG", bagIndex = 2, label = getInventoryContainerLabel("BAG", 2) },
+        { key = "Bag3", kind = "BAG", bagIndex = 3, label = getInventoryContainerLabel("BAG", 3) },
+        { key = "Bag4", kind = "BAG", bagIndex = 4, label = getInventoryContainerLabel("BAG", 4) },
+        { key = "Keyring", kind = "KEYRING", label = getInventoryContainerLabel("KEYRING") },
+    }
+
+    for index, definition in ipairs(definitions) do
+        local button = CreateFrame("Button", nil, bar)
+        button:SetSize(buttonSize, buttonSize)
+        button:SetPoint(
+            "LEFT",
+            bar,
+            "CENTER",
+            -(totalWidth / 2) + ((index - 1) * (buttonSize + spacing)),
+            0
+        )
+        button:RegisterForClicks("LeftButtonUp")
+        if definition.kind ~= "KEYRING" then
+            button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+            button:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+            addSimpleBackdrop(button, 0.38)
+        end
+
+        button.icon = button:CreateTexture(nil, "ARTWORK")
+        configureInventoryContainerIcon(button, definition.kind)
+
+        button.selectedOverlay = button:CreateTexture(nil, "OVERLAY")
+        if definition.kind == "KEYRING" then
+            button.selectedOverlay:SetSize(13, 28)
+            button.selectedOverlay:SetPoint("CENTER", button, "CENTER", 0, 0)
+            button.selectedOverlay:SetTexture("Interface\\Buttons\\UI-Button-KeyRing")
+            button.selectedOverlay:SetTexCoord(0, 0.5625, 0, 0.609375)
+        else
+            button.selectedOverlay:SetAllPoints(button)
+            button.selectedOverlay:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+        end
+        button.selectedOverlay:SetBlendMode("ADD")
+        button.selectedOverlay:SetAlpha(0.70)
+        button.selectedOverlay:Hide()
+
+        button.definition = definition
+        button.containerKey = nil
+        button.containerEntry = nil
+        button.tip = definition.label
+
+        local fallback = getInventoryContainerFallbackTexture(definition.kind)
+        button.defaultTexture = fallback
+        button.icon:SetTexture(fallback)
+        button.icon:SetAlpha(0.30)
+        button:Disable()
+
+        button:SetScript("OnEnter", function(self)
+            if not GameTooltip then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(self.tip or self.definition.label or "", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+
+        button:SetScript("OnLeave", function()
+            if GameTooltip and GameTooltip.Hide then
+                GameTooltip:Hide()
+            end
+        end)
+
+        button:SetScript("OnClick", function(self)
+            local inventory = MultiBot.inventory
+            if inventory and inventory.toggleContainerFilter and self.containerKey then
+                inventory:toggleContainerFilter(self.containerKey)
+            end
+        end)
+
+        buttons[definition.key] = button
+    end
+
+    return bar, buttons
 end
 
 local function updateModeLabel()
@@ -859,9 +1232,6 @@ local function setInventoryBotName(botName)
         inventory.window:SetTitle(getInventoryWindowTitle(inventory.name))
     end
 
-    if inventory.helperText then
-        inventory.helperText:SetText(botName or "")
-    end
 end
 
 local function resetInventoryViewState()
@@ -873,7 +1243,9 @@ local function resetInventoryViewState()
     setInventoryBotName("")
     inventory.pendingLootBot = nil
 
-    if inventory.resetItems then
+    if inventory.resetExactViewState then
+        inventory:resetExactViewState()
+    elseif inventory.resetItems then
         inventory:resetItems()
     end
 end
@@ -967,7 +1339,9 @@ local function prepareInventoryForBot(botName)
 
     if inventory and previousBotName ~= botName then
         inventory.pendingLootBot = nil
-        if inventory.resetItems then
+        if inventory.resetExactViewState then
+            inventory:resetExactViewState()
+        elseif inventory.resetItems then
             inventory:resetItems()
         end
         inventory.summary = {
@@ -1251,23 +1625,19 @@ local function createInventoryContent(window)
     modeValueLabel:SetHeight(INVENTORY_WINDOW_DEFAULTS.modeValueHeight)
     modeValueLabel:SetText(MultiBot.L("inventory.mode.sell"))
 
-    local helperText = leftPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    helperText:SetPoint("TOPLEFT", modeValueLabel, "BOTTOMLEFT", 0, -INVENTORY_WINDOW_DEFAULTS.helperTextOffsetY)
-    helperText:SetPoint("TOPRIGHT", modeValueLabel, "BOTTOMRIGHT", 0, -INVENTORY_WINDOW_DEFAULTS.helperTextOffsetY)
-    helperText:SetJustifyH("LEFT")
-    helperText:SetJustifyV("TOP")
-    helperText:SetHeight(INVENTORY_WINDOW_DEFAULTS.helperTextHeight)
-    if helperText.SetWordWrap then
-        helperText:SetWordWrap(true)
-    end
-    if helperText.SetTextColor then
-        helperText:SetTextColor(1.0, 0.82, 0.0)
-    end
-    helperText:SetText("")
+    local containerBar, containerButtons = createInventoryContainerBar(itemsPanel)
 
     local scrollFrame = CreateFrame("ScrollFrame", "MultiBotInventoryScrollFrame", itemsPanel, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", itemsPanel, "TOPLEFT", INVENTORY_WINDOW_DEFAULTS.itemsPanelPadding, -INVENTORY_WINDOW_DEFAULTS.itemsPanelPadding)
-    scrollFrame:SetPoint("BOTTOMRIGHT", itemsPanel, "BOTTOMRIGHT", -INVENTORY_WINDOW_DEFAULTS.scrollBarAllowance, INVENTORY_WINDOW_DEFAULTS.itemsPanelPadding)
+    scrollFrame:SetPoint(
+        "BOTTOMRIGHT",
+        itemsPanel,
+        "BOTTOMRIGHT",
+        -INVENTORY_WINDOW_DEFAULTS.scrollBarAllowance,
+        INVENTORY_WINDOW_DEFAULTS.itemsPanelPadding
+            + INVENTORY_WINDOW_DEFAULTS.containerBarHeight
+            + INVENTORY_WINDOW_DEFAULTS.containerBarGap
+    )
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollChild:SetWidth(1)
@@ -1351,9 +1721,10 @@ local function createInventoryContent(window)
         leftPanel = leftPanel,
         itemsPanel = itemsPanel,
         items = items,
+        containerBar = containerBar,
+        containerButtons = containerButtons,
         modeLabel = modeLabel,
         modeValueLabel = modeValueLabel,
-        helperText = helperText,
         moneyLabel = moneyLabel,
         bagSlotsLabel = bagSlotsLabel,
         actionHost = actionHost,
@@ -1391,6 +1762,10 @@ function MultiBot.InitializeInventoryFrame()
     window:Hide()
     window.frame:HookScript("OnHide", function()
         syncInventoryButtonState(false)
+        local current = MultiBot.inventory
+        if current and current.clearItemMoveDrag then
+            current:clearItemMoveDrag()
+        end
     end)
 
     registerInventoryEscapeClose(window, "Inventory")
@@ -1407,12 +1782,18 @@ function MultiBot.InitializeInventoryFrame()
         texts = { Title = content.modeLabel },
         modeLabel = content.modeLabel,
         modeValueLabel = content.modeValueLabel,
-        helperText = content.helperText,
         moneyLabel = content.moneyLabel,
         bagSlotsLabel = content.bagSlotsLabel,
+        containerBar = content.containerBar,
+        containerButtons = content.containerButtons,
         name = "",
         action = "s",
         pendingLootBot = nil,
+        itemMoveDrag = nil,
+        itemMovePendingToken = nil,
+        containerFilter = nil,
+        exactSnapshot = nil,
+        legacyItemMetadataById = {},
         summary = {
             bagUsed = nil,
             bagTotal = nil,
@@ -1479,7 +1860,172 @@ function MultiBot.InitializeInventoryFrame()
         persistInventoryWindowPosition(window.frame)
     end
 
+    function inventory:clearItemMoveDrag()
+        local drag = self.itemMoveDrag
+        if drag and drag.sourceButton and drag.sourceButton.SetAlpha then
+            drag.sourceButton:SetAlpha(drag.sourceAlpha or 1.0)
+        end
+        self.itemMoveDrag = nil
+    end
+
+    function inventory:findExactDropTarget(frame)
+        local current = frame
+        for _ = 1, 8 do
+            if not current then
+                break
+            end
+            if current.__mbExactSlot then
+                return current
+            end
+            if type(current.GetParent) ~= "function" then
+                break
+            end
+            current = current:GetParent()
+        end
+        return nil
+    end
+
+    function inventory:beginItemMoveDrag(button)
+        if self.itemMovePendingToken or not button or type(button.__mbExactSlot) ~= "table" then
+            return false
+        end
+        if not MultiBot.Comm or not MultiBot.Comm.IsInventoryItemMoveCapable or
+            not MultiBot.Comm.IsInventoryItemMoveCapable() then
+            return false
+        end
+        if type(self.exactSnapshot) ~= "table" or self.name == "" then
+            return false
+        end
+
+        local source = button.__mbExactSlot
+        if source.botName ~= self.name then
+            return false
+        end
+
+        local positionKey = tostring(source.bag) .. ":" .. tostring(source.slot)
+        local location = self.exactSnapshot.itemsByPosition and self.exactSnapshot.itemsByPosition[positionKey] or nil
+        if not location or tonumber(location.itemId or 0) ~= tonumber(source.itemId or 0) or
+            tonumber(location.count or 0) ~= tonumber(source.count or 0) then
+            return false
+        end
+
+        self:clearItemMoveDrag()
+        self.itemMoveDrag = {
+            botName = self.name,
+            srcBag = tonumber(source.bag or 0) or 0,
+            srcSlot = tonumber(source.slot or 0) or 0,
+            srcItemId = tonumber(source.itemId or 0) or 0,
+            srcCount = tonumber(source.count or 0) or 0,
+            sourceButton = button,
+            sourceAlpha = button.GetAlpha and button:GetAlpha() or 1.0,
+        }
+
+        if GameTooltip and GameTooltip.Hide then
+            GameTooltip:Hide()
+        end
+        if button.SetAlpha then
+            button:SetAlpha(0.45)
+        end
+        return true
+    end
+
+    function inventory:finishItemMoveDrag(button)
+        local drag = self.itemMoveDrag
+        local mouseFocus = type(GetMouseFocus) == "function" and GetMouseFocus() or nil
+        local targetButton = self:findExactDropTarget(mouseFocus)
+        self:clearItemMoveDrag()
+
+        if not drag or drag.sourceButton ~= button or self.itemMovePendingToken then
+            return false
+        end
+        if drag.botName ~= self.name or type(self.exactSnapshot) ~= "table" then
+            return false
+        end
+        if not targetButton or type(targetButton.__mbExactSlot) ~= "table" then
+            return false
+        end
+
+        local target = targetButton.__mbExactSlot
+        if target.botName ~= drag.botName then
+            return false
+        end
+
+        local dstBag = tonumber(target.bag or 0) or 0
+        local dstSlot = tonumber(target.slot or 0) or 0
+        if drag.srcBag == dstBag and drag.srcSlot == dstSlot then
+            return false
+        end
+
+        local sourceKey = tostring(drag.srcBag) .. ":" .. tostring(drag.srcSlot)
+        local currentSource = self.exactSnapshot.itemsByPosition and self.exactSnapshot.itemsByPosition[sourceKey] or nil
+        if not currentSource or tonumber(currentSource.itemId or 0) ~= drag.srcItemId or
+            tonumber(currentSource.count or 0) ~= drag.srcCount then
+            return false
+        end
+
+        local targetKey = tostring(dstBag) .. ":" .. tostring(dstSlot)
+        local currentTarget = self.exactSnapshot.itemsByPosition and self.exactSnapshot.itemsByPosition[targetKey] or nil
+        local dstItemId = currentTarget and (tonumber(currentTarget.itemId or 0) or 0) or 0
+        local dstCount = currentTarget and (tonumber(currentTarget.count or 0) or 0) or 0
+        if dstItemId ~= (tonumber(target.itemId or 0) or 0) or dstCount ~= (tonumber(target.count or 0) or 0) then
+            return false
+        end
+
+        if not MultiBot.Comm or not MultiBot.Comm.RunInventoryItemMove then
+            return false
+        end
+
+        local token = MultiBot.Comm.RunInventoryItemMove(
+            drag.botName, drag.srcBag, drag.srcSlot, drag.srcItemId, drag.srcCount,
+            dstBag, dstSlot, dstItemId, dstCount
+        )
+        if not token then
+            return false
+        end
+
+        self.itemMovePendingToken = token
+        return true
+    end
+
+    function inventory:configureExactItemButton(button, item)
+        if not button or type(item) ~= "table" or item.exactLocation ~= true then
+            return false
+        end
+
+        button.__mbExactSlot = {
+            botName = self.name,
+            bag = tonumber(item.bag or 0) or 0,
+            slot = tonumber(item.slot or 0) or 0,
+            itemId = tonumber(item.id or 0) or 0,
+            count = tonumber(item._serverCount or item.count or 1) or 1,
+        }
+
+        if not MultiBot.Comm or not MultiBot.Comm.IsInventoryItemMoveCapable or
+            not MultiBot.Comm.IsInventoryItemMoveCapable() then
+            return true
+        end
+
+        button:RegisterForClicks("LeftButtonUp", "RightButtonDown")
+        button:RegisterForDrag("LeftButton")
+        button:SetScript("OnDragStart", function(self)
+            self.__mbSuppressNextLeftClick = true
+            inventory:beginItemMoveDrag(self)
+        end)
+        button:SetScript("OnDragStop", function(self)
+            inventory:finishItemMoveDrag(self)
+            if MultiBot.TimerAfter then
+                MultiBot.TimerAfter(0.01, function()
+                    self.__mbSuppressNextLeftClick = nil
+                end)
+            else
+                self.__mbSuppressNextLeftClick = nil
+            end
+        end)
+        return true
+    end
+
     function inventory:resetItems()
+        self:clearItemMoveDrag()
         local items = self.frames and self.frames.Items
         if items and items.clear then
             items:clear()
@@ -1487,6 +2033,271 @@ function MultiBot.InitializeInventoryFrame()
         if items then
             items.index = 0
         end
+    end
+
+    function inventory:captureLegacyItemMetadata()
+        local metadata = {}
+        local items = self.frames and self.frames.Items
+        if items and type(items.buttons) == "table" then
+            for _, button in pairs(items.buttons) do
+                local item = button and button.item or nil
+                local itemId = item and tostring(item.id or "") or ""
+                if itemId ~= "" and not metadata[itemId] then
+                    metadata[itemId] = item
+                end
+            end
+        end
+
+        self.legacyItemMetadataById = metadata
+        return metadata
+    end
+
+    function inventory:updateContainerBar(snapshot)
+        local buttons = self.containerButtons or {}
+        local bagEntries = {}
+        local backpackEntry = nil
+        local keyringEntry = nil
+
+        if type(snapshot) == "table" and type(snapshot.bags) == "table" then
+            for _, entry in ipairs(snapshot.bags) do
+                if type(entry) == "table" then
+                    if entry.kind == "BACKPACK" then
+                        backpackEntry = entry
+                    elseif entry.kind == "KEYRING" then
+                        keyringEntry = entry
+                    elseif entry.kind == "BAG" then
+                        table.insert(bagEntries, entry)
+                    end
+                end
+            end
+        end
+
+        table.sort(bagEntries, function(left, right)
+            return (tonumber(left and left.bag or 0) or 0) < (tonumber(right and right.bag or 0) or 0)
+        end)
+
+        local entries = {
+            Backpack = backpackEntry,
+            Bag1 = bagEntries[1],
+            Bag2 = bagEntries[2],
+            Bag3 = bagEntries[3],
+            Bag4 = bagEntries[4],
+            Keyring = keyringEntry,
+        }
+
+        local availableFilters = {}
+        for key, button in pairs(buttons) do
+            local entry = entries[key]
+            local slotCount = tonumber(entry and entry.slotCount or 0) or 0
+            local itemId = tonumber(entry and entry.itemId or 0) or 0
+            local enabled = entry ~= nil and slotCount > 0
+            if entry and entry.kind == "BAG" and itemId <= 0 then
+                enabled = false
+            end
+
+            button.containerEntry = entry
+            button.containerKey = entry and buildInventoryContainerKey(entry) or nil
+
+            local texture = button.defaultTexture
+            if entry and entry.kind == "BAG" and itemId > 0 and GetItemIcon then
+                texture = GetItemIcon(itemId) or texture
+            end
+            button.icon:SetTexture(texture)
+
+            local baseLabel = button.definition and button.definition.label or ""
+            if entry then
+                button.tip = string.format("%s (%d)", baseLabel, slotCount)
+            else
+                button.tip = baseLabel
+            end
+
+            if enabled and button.containerKey then
+                button:Enable()
+                button.icon:SetAlpha(1.0)
+                availableFilters[button.containerKey] = true
+            else
+                button:Disable()
+                button.icon:SetAlpha(0.30)
+            end
+        end
+
+        if self.containerFilter and not availableFilters[self.containerFilter] then
+            self.containerFilter = nil
+        end
+
+        for _, button in pairs(buttons) do
+            if button.selectedOverlay then
+                if self.containerFilter and button.containerKey == self.containerFilter then
+                    button.selectedOverlay:Show()
+                else
+                    button.selectedOverlay:Hide()
+                end
+            end
+        end
+    end
+
+    function inventory:resetExactViewState()
+        self:clearItemMoveDrag()
+        self.itemMovePendingToken = nil
+        self.containerFilter = nil
+        self.exactSnapshot = nil
+        self.legacyItemMetadataById = {}
+        self:updateContainerBar(nil)
+        self:resetItems()
+    end
+
+    function inventory:renderExactSnapshot(snapshot)
+        self:clearItemMoveDrag()
+        if type(snapshot) ~= "table" or snapshot.botName ~= self.name then
+            return false
+        end
+
+        local items = self.frames and self.frames.Items
+        if not items then
+            return false
+        end
+
+        self.exactSnapshot = snapshot
+        self:updateContainerBar(snapshot)
+
+        local containers = {}
+        for _, entry in ipairs(snapshot.bags or {}) do
+            if type(entry) == "table" then
+                local key = buildInventoryContainerKey(entry)
+                if not self.containerFilter or key == self.containerFilter then
+                    table.insert(containers, entry)
+                end
+            end
+        end
+
+        items:clear()
+        items.suspendLayout = true
+        items.index = 0
+
+        local useVisualGroups = self.containerFilter == nil
+        local visualGroups = {}
+        local layoutIndex = 0
+        local renderedPositions = {}
+
+        for _, entry in ipairs(containers) do
+            local slotStart = tonumber(entry.slotStart or 0) or 0
+            local slotCount = math.max(0, tonumber(entry.slotCount or 0) or 0)
+            local bag = tonumber(entry.bag or 0) or 0
+            local groupKey = buildInventoryContainerKey(entry)
+            local group = nil
+
+            if useVisualGroups and groupKey and slotCount > 0 then
+                local label = getInventoryContainerSnapshotLabel(self, entry)
+                group = {
+                    key = groupKey,
+                    label = string.format("%s (%d)", label or "", slotCount),
+                    slotCount = slotCount,
+                    decorated = true,
+                }
+                table.insert(visualGroups, group)
+            end
+
+            for offset = 0, slotCount - 1 do
+                local slot = slotStart + offset
+                local positionKey = tostring(bag) .. ":" .. tostring(slot)
+                local location = snapshot.itemsByPosition and snapshot.itemsByPosition[positionKey] or nil
+                renderedPositions[positionKey] = true
+
+                local button = nil
+                if location and MultiBot.InventoryAddExactItem then
+                    local metadata = self.legacyItemMetadataById and self.legacyItemMetadataById[tostring(location.itemId)] or nil
+                    button = MultiBot.InventoryAddExactItem(items, metadata, location, layoutIndex)
+                else
+                    button = items:addEmptySlot(layoutIndex, "Slot_" .. positionKey, {
+                        botName = self.name,
+                        bag = bag,
+                        slot = slot,
+                        itemId = 0,
+                        count = 0,
+                    })
+                end
+
+                if useVisualGroups and group and button then
+                    items:assignButtonToVisualGroup(button, group.key, offset)
+                end
+
+                layoutIndex = layoutIndex + 1
+            end
+        end
+
+        local orphanGroup = nil
+        local orphanCount = 0
+        if not self.containerFilter then
+            for _, location in ipairs(snapshot.items or {}) do
+                local positionKey = tostring(location.bag or 0) .. ":" .. tostring(location.slot or 0)
+                if not renderedPositions[positionKey] then
+                    local button = nil
+                    if MultiBot.InventoryAddExactItem then
+                        local metadata = self.legacyItemMetadataById and self.legacyItemMetadataById[tostring(location.itemId)] or nil
+                        button = MultiBot.InventoryAddExactItem(items, metadata, location, layoutIndex)
+                    else
+                        button = items:addEmptySlot(layoutIndex, "Orphan_" .. positionKey)
+                    end
+
+                    if button then
+                        if not orphanGroup then
+                            orphanGroup = {
+                                key = "__ORPHAN__",
+                                label = "",
+                                slotCount = 0,
+                                decorated = false,
+                            }
+                            table.insert(visualGroups, orphanGroup)
+                        end
+                        items:assignButtonToVisualGroup(button, orphanGroup.key, orphanCount)
+                        orphanCount = orphanCount + 1
+                        orphanGroup.slotCount = orphanCount
+                    end
+
+                    layoutIndex = layoutIndex + 1
+                end
+            end
+        end
+
+        if useVisualGroups then
+            items:setVisualGroups(visualGroups)
+        else
+            items:setVisualGroups({})
+        end
+
+        items.index = layoutIndex
+        items.suspendLayout = false
+        items:updateLayout()
+        return true
+    end
+    function inventory:toggleContainerFilter(containerKey)
+        if not containerKey or containerKey == "" or type(self.exactSnapshot) ~= "table" then
+            return false
+        end
+
+        if self.containerFilter == containerKey then
+            self.containerFilter = nil
+        else
+            self.containerFilter = containerKey
+        end
+
+        self:updateContainerBar(self.exactSnapshot)
+        return self:renderExactSnapshot(self.exactSnapshot)
+    end
+
+    function inventory:endPayload(botName)
+        local targetBotName = botName or self.name
+        if targetBotName ~= self.name or not self:IsVisible() then
+            return false
+        end
+
+        self:captureLegacyItemMetadata()
+
+        if MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then
+            return MultiBot.Comm.RequestInventoryExact(targetBotName) and true or false
+        end
+
+        return false
     end
 
     function inventory:setBotName(botName)
@@ -1648,4 +2459,42 @@ function MultiBot.InitializeInventoryFrame()
     updateInventorySummaryLabels(inventory)
 
     return inventory
+end
+
+MultiBot.OnBridgeInventoryExactSnapshot = function(botName, snapshot)
+    local inventory = MultiBot.inventory
+    if not inventory or not inventory.IsVisible or not inventory:IsVisible() then
+        return
+    end
+
+    if botName ~= inventory.name or type(snapshot) ~= "table" then
+        return
+    end
+
+    if inventory.renderExactSnapshot then
+        inventory:renderExactSnapshot(snapshot)
+    end
+end
+
+MultiBot.OnBridgeInventoryItemMoveResult = function(botName, status, reason, srcBag, srcSlot, dstBag, dstSlot, command)
+    local inventory = MultiBot.inventory
+    if not inventory then
+        return
+    end
+
+    if command and inventory.itemMovePendingToken == command.token then
+        inventory.itemMovePendingToken = nil
+    end
+    if inventory.clearItemMoveDrag then
+        inventory:clearItemMoveDrag()
+    end
+
+    if not inventory.IsVisible or not inventory:IsVisible() or botName ~= inventory.name then
+        return
+    end
+    if not MultiBot.Comm or not MultiBot.Comm.RequestInventoryExact then
+        return
+    end
+
+    MultiBot.Comm.RequestInventoryExact(botName)
 end

@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état post-merge du 14 août 2026.
-Dernière mise à jour : 15/08/2026 — `INVENTORY_EXACT_V1`, l'UI inventaire bag-aware (Backpack + 4 sacs + Keyring, slots vides et filtres par conteneur) et `ITEM_MOVE_V1` sont implémentés, vérifiés et validés en jeu. Le drag & drop déplace une pile entière entre emplacements physiques autorisés via le Bridge, sans mutation optimiste ni API curseur native côté addon ; le split-stack reste un chantier distinct. Le support multi-préfixes reste différé tant qu'aucun second addon/préfixe n'en a besoin et les endpoints génériques dangereux restent explicitement rejetés. Dans la reprise sélective Jellypowered, le prochain chantier actif est désormais **Lectures bulk** (`GET~INVENTORY_BULK` / `GET~BOT_SKILLS_BULK`) ; dans la roadmap normale, le prochain chantier reste l'ajout/retrait d'items précis dans les règles de loot.
+Dernière mise à jour : 15/08/2026 — `INVENTORY_EXACT_V1`, l'UI inventaire bag-aware (Backpack + 4 sacs + Keyring, slots vides et filtres par conteneur) et `ITEM_MOVE_V1` sont implémentés, vérifiés et validés en jeu. Le drag & drop déplace une pile entière entre emplacements physiques autorisés via le Bridge, sans mutation optimiste ni API curseur native côté addon ; le split-stack reste un chantier distinct. Les lectures bulk Jellypowered ont été auditées et ne sont pas intégrées : `GET~INVENTORY_BULK` est rejeté/différé dans sa forme Extended et `GET~BOT_SKILLS_BULK` reste différé faute de consommateur multi-bot réel. Le support multi-préfixes reste différé tant qu'aucun second addon/préfixe n'en a besoin et les endpoints génériques dangereux restent explicitement rejetés. Dans la reprise sélective Jellypowered, le prochain chantier actif est désormais **ITEM_EQUIP** ; dans la roadmap normale, le prochain chantier reste l'ajout/retrait d'items précis dans les règles de loot.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -108,12 +108,22 @@ La branche `Extended` est divergente et ne doit pas être mergée en bloc. Chaqu
    - audit final : `audit-multibot-item-move-final-v1b-2026-08-15-195912.zip` — `FINAL_STATUS=OK`, `FAILURE_COUNT=0`, `WARNING_COUNT=0` ;
    - attribution Jellypowered à conserver pour les parties réellement reprises ou substantiellement adaptées depuis `Extended`.
 
-3. **Lectures bulk — PROCHAIN CHANTIER JELLYPOWERED / À AUDITER-ADAPTER**
-   - `GET~INVENTORY_BULK` est distinct de notre `INVENTORY_BULK_SELL_V1` ;
-   - étudier aussi `GET~BOT_SKILLS_BULK` ;
-   - framing/token, limites de bots/items/octets, timeouts et nettoyage obligatoires.
+3. **Lectures bulk — AUDITÉ / NON INTÉGRÉ**
+   - audit ciblé : `audit-multibot-jellypowered-bulk-reads-v1-2026-08-15-205840.zip` — `FINAL_STATUS=OK`, `FAILURE_COUNT=0`, `WARNING_COUNT=0` ;
+   - `GET~INVENTORY_BULK` : **rejeter/différer dans sa forme Extended** ;
+     - il recouvre partiellement les données déjà fournies par `INVENTORY_EXACT_V1`, qui reste la source autoritative pour la topologie physique Backpack / sacs / Keyring et pour `ITEM_MOVE_V1` ;
+     - Extended réutilise `INV_BAG` et `INV_ITEM_LOC` avec des schémas incompatibles avec ceux déjà validés dans notre protocole exact ;
+     - aucun consommateur Addon actuel ne nécessite une snapshot d'inventaire multi-bot ;
+     - la boucle sur tous les bots visibles n'est pas explicitement bornée et peut amplifier fortement le trafic addon et les logs ;
+     - aucun framing générique, comptage de complétude, pagination, ACK ou rate-limit dédié n'est fourni par Extended pour cette famille ;
+   - `GET~BOT_SKILLS_BULK` : **différer jusqu'à l'apparition d'un consommateur multi-bot réel** ;
+     - `GET~BOT_SKILLS` unitaire et `BuildBotSkillEntries` couvrent déjà le besoin actuel de Character Info ;
+     - le format Extended inverse `skillId` et `category` par rapport au schéma `BOT_SKILLS_ITEM` déjà utilisé ;
+     - toute reprise future devra conserver le schéma unitaire existant et ajouter des limites explicites de bots/entrées/octets, rate-limit, token/timeout et contrôle de complétude ;
+   - aucun besoin de modifier `mod-playerbots` et aucun exécuteur générique/chat Playerbots n'est requis pour ces lectures ;
+   - décision : **aucun patch C++/Lua pour ce point** ; le chantier est clos par documentation uniquement.
 
-4. **Équipement natif d'un item précis — À ADAPTER**
+4. **Équipement natif d'un item précis — PROCHAIN CHANTIER JELLYPOWERED / À AUDITER-ADAPTER**
    - endpoint spécialisé `ITEM_EQUIP` ;
    - valider bot, item exact, emplacement, slot cible et état runtime.
 

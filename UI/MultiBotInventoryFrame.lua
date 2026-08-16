@@ -1889,8 +1889,8 @@ function MultiBot.InitializeInventoryFrame()
 
         ghost.icon = ghost:CreateTexture(nil, "ARTWORK")
         ghost.icon:SetAllPoints(ghost)
-        ghost:SetScript("OnUpdate", function(self)
-            updateItemMoveDragGhostPosition(self)
+        ghost:SetScript("OnUpdate", function(ghostFrame)
+            updateItemMoveDragGhostPosition(ghostFrame)
         end)
         ghost:Hide()
 
@@ -2059,18 +2059,18 @@ function MultiBot.InitializeInventoryFrame()
 
         button:RegisterForClicks("LeftButtonUp", "RightButtonDown")
         button:RegisterForDrag("LeftButton")
-        button:SetScript("OnDragStart", function(self)
-            self.__mbSuppressNextLeftClick = true
-            inventory:beginItemMoveDrag(self)
+        button:SetScript("OnDragStart", function(dragButton)
+            dragButton.__mbSuppressNextLeftClick = true
+            inventory:beginItemMoveDrag(dragButton)
         end)
-        button:SetScript("OnDragStop", function(self)
-            inventory:finishItemMoveDrag(self)
+        button:SetScript("OnDragStop", function(dragButton)
+            inventory:finishItemMoveDrag(dragButton)
             if MultiBot.TimerAfter then
                 MultiBot.TimerAfter(0.01, function()
-                    self.__mbSuppressNextLeftClick = nil
+                    dragButton.__mbSuppressNextLeftClick = nil
                 end)
             else
-                self.__mbSuppressNextLeftClick = nil
+                dragButton.__mbSuppressNextLeftClick = nil
             end
         end)
         return true
@@ -2255,7 +2255,7 @@ function MultiBot.InitializeInventoryFrame()
                 local location = snapshot.itemsByPosition and snapshot.itemsByPosition[positionKey] or nil
                 renderedPositions[positionKey] = true
 
-                local button = nil
+                local button
                 if location and MultiBot.InventoryAddExactItem then
                     local metadata = self.legacyItemMetadataById and self.legacyItemMetadataById[tostring(location.itemId)] or nil
                     button = MultiBot.InventoryAddExactItem(items, metadata, location, layoutIndex)
@@ -2283,7 +2283,7 @@ function MultiBot.InitializeInventoryFrame()
             for _, location in ipairs(snapshot.items or {}) do
                 local positionKey = tostring(location.bag or 0) .. ":" .. tostring(location.slot or 0)
                 if not renderedPositions[positionKey] then
-                    local button = nil
+                    local button
                     if MultiBot.InventoryAddExactItem then
                         local metadata = self.legacyItemMetadataById and self.legacyItemMetadataById[tostring(location.itemId)] or nil
                         button = MultiBot.InventoryAddExactItem(items, metadata, location, layoutIndex)

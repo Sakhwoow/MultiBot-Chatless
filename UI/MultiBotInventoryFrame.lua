@@ -1790,6 +1790,7 @@ function MultiBot.InitializeInventoryFrame()
         action = "s",
         pendingLootBot = nil,
         itemMoveDrag = nil,
+        itemMoveDragGhost = nil,
         itemMovePendingToken = nil,
         containerFilter = nil,
         exactSnapshot = nil,
@@ -1860,11 +1861,55 @@ function MultiBot.InitializeInventoryFrame()
         persistInventoryWindowPosition(window.frame)
     end
 
+    local function updateItemMoveDragGhostPosition(ghost)
+        if not ghost or type(GetCursorPosition) ~= "function" or not UIParent or
+            type(UIParent.GetEffectiveScale) ~= "function" then
+            return
+        end
+
+        local cursorX, cursorY = GetCursorPosition()
+        local scale = UIParent:GetEffectiveScale()
+        if not cursorX or not cursorY or not scale or scale <= 0 then
+            return
+        end
+
+        ghost:ClearAllPoints()
+        ghost:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cursorX / scale, cursorY / scale)
+    end
+
+    function inventory:ensureItemMoveDragGhost()
+        if self.itemMoveDragGhost then
+            return self.itemMoveDragGhost
+        end
+
+        local ghost = CreateFrame("Frame", nil, UIParent)
+        ghost:SetSize(INVENTORY_WINDOW_DEFAULTS.itemSize, INVENTORY_WINDOW_DEFAULTS.itemSize)
+        ghost:SetFrameStrata("TOOLTIP")
+        ghost:EnableMouse(false)
+
+        ghost.icon = ghost:CreateTexture(nil, "ARTWORK")
+        ghost.icon:SetAllPoints(ghost)
+        ghost:SetScript("OnUpdate", function(self)
+            updateItemMoveDragGhostPosition(self)
+        end)
+        ghost:Hide()
+
+        self.itemMoveDragGhost = ghost
+        return ghost
+    end
+
     function inventory:clearItemMoveDrag()
         local drag = self.itemMoveDrag
         if drag and drag.sourceButton and drag.sourceButton.SetAlpha then
             drag.sourceButton:SetAlpha(drag.sourceAlpha or 1.0)
         end
+
+        local ghost = self.itemMoveDragGhost
+        if ghost then
+            ghost:Hide()
+            ghost:ClearAllPoints()
+        end
+
         self.itemMoveDrag = nil
     end
 
@@ -1925,6 +1970,13 @@ function MultiBot.InitializeInventoryFrame()
         end
         if button.SetAlpha then
             button:SetAlpha(0.45)
+        end
+
+        local ghost = self:ensureItemMoveDragGhost()
+        if ghost and ghost.icon and button.texture then
+            ghost.icon:SetTexture(button.texture)
+            updateItemMoveDragGhostPosition(ghost)
+            ghost:Show()
         end
         return true
     end

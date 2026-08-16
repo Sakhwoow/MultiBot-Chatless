@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
 Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état post-merge du 14 août 2026.
-Dernière mise à jour : 15/08/2026 — `INVENTORY_EXACT_V1`, l'UI inventaire bag-aware (Backpack + 4 sacs + Keyring, slots vides et filtres par conteneur) et `ITEM_MOVE_V1` sont implémentés, vérifiés et validés en jeu. Le drag & drop déplace une pile entière entre emplacements physiques autorisés via le Bridge, sans mutation optimiste ni API curseur native côté addon ; le split-stack reste un chantier distinct. Les lectures bulk Jellypowered ont été auditées et ne sont pas intégrées : `GET~INVENTORY_BULK` est rejeté/différé dans sa forme Extended et `GET~BOT_SKILLS_BULK` reste différé faute de consommateur multi-bot réel. Le support multi-préfixes reste différé tant qu'aucun second addon/préfixe n'en a besoin et les endpoints génériques dangereux restent explicitement rejetés. Dans la reprise sélective Jellypowered, le prochain chantier actif est désormais **ITEM_EQUIP** ; dans la roadmap normale, le prochain chantier reste l'ajout/retrait d'items précis dans les règles de loot.
+Dernière mise à jour : 16/08/2026 — `INVENTORY_EXACT_V1`, l'UI inventaire bag-aware, `ITEM_MOVE_V1`, `ITEM_EQUIP_V1` et `ITEM_UNEQUIP_V1` sont implémentés, vérifiés et validés en jeu. Le déplacement reste limité aux piles entières ; l'équipement part d'un emplacement physique exact Backpack/Sac 1..4 et s'appuie sur l'auto-équipement natif AzerothCore ; le déséquipement part d'un slot d'équipement exact et range l'objet via la voie native AzerothCore, avec vérification autoritative de l'objet par GUID. Les deux chemins attendent un résultat structuré avant rafraîchissement et ne produisent pas de whisper/chat parasite en fonctionnement bridge-first normal. Les lectures bulk Jellypowered restent non intégrées, le support multi-préfixes reste différé et les endpoints génériques dangereux restent explicitement rejetés. Dans la reprise sélective Jellypowered, le prochain chantier actif est désormais **ITEM_USE** ; dans la roadmap normale, le prochain chantier reste l'ajout/retrait d'items précis dans les règles de loot.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -79,7 +79,7 @@ La branche `Extended` est divergente et ne doit pas être mergée en bloc. Chaqu
    - `INVENTORY_EXACT_V1` est implémenté comme fondation complémentaire à l'`INVENTORY_V1` historique : le chemin legacy `INV_BEGIN` / `INV_ITEM` reste conservé pour les fonctions déjà validées ;
    - le Bridge expose la topologie réelle des conteneurs avec `INV_BAG` et les piles physiques avec `INV_ITEM_LOC`, en utilisant les coordonnées AzerothCore réelles comme référence canonique ;
    - les coordonnées et métadonnées permettent de distinguer sans ambiguïté Backpack, sacs équipés, Keyring et piles identiques situées dans des emplacements physiques différents ;
-   - `INV_EQUIP_LOC` reste différé jusqu'au chantier `ITEM_EQUIP`, où il aura un consommateur réel ;
+   - `INV_EQUIP_LOC` n'a pas été nécessaire pour la V1 `ITEM_EQUIP_V1` validée et reste différé jusqu'à l'apparition d'un consommateur réel ;
    - `INVENTORY_BULK_SELL_V1` et `INVENTORY_OPEN_V1` restent préservés ;
    - les données exactes ne sont jamais une autorisation : joueur, contrôle du bot, session/map, coordonnées, item, quantité et état runtime restent revalidés côté Bridge.
 
@@ -123,11 +123,19 @@ La branche `Extended` est divergente et ne doit pas être mergée en bloc. Chaqu
    - aucun besoin de modifier `mod-playerbots` et aucun exécuteur générique/chat Playerbots n'est requis pour ces lectures ;
    - décision : **aucun patch C++/Lua pour ce point** ; le chantier est clos par documentation uniquement.
 
-4. **Équipement natif d'un item précis — PROCHAIN CHANTIER JELLYPOWERED / À AUDITER-ADAPTER**
-   - endpoint spécialisé `ITEM_EQUIP` ;
-   - valider bot, item exact, emplacement, slot cible et état runtime.
+4. **Équipement et déséquipement natifs d'un item précis — TERMINÉ / VALIDÉ EN JEU**
+   - `ITEM_EQUIP_V1` utilise l'endpoint spécialisé `RUN~ITEM_EQUIP~bot~token~srcBag~srcSlot~srcItemId~srcCount` et le résultat structuré `INVENTORY_ITEM_EQUIP` ;
+   - la source est limitée au Backpack et aux sacs équipés, avec identité exacte `bag/slot/itemId/count`, revalidation serveur du bot, des droits, sessions, état runtime et source avant exécution ;
+   - l'exécution passe par l'auto-équipement natif AzerothCore ; aucun `HandleCommand`, `DoSpecificAction`, exécuteur Playerbots générique ni mutation optimiste Addon n'est utilisé ;
+   - le résultat autoritatif déclenche le rafraîchissement de l'inventaire et les tests en jeu ont validé Backpack, sacs 1..4, remplacement d'un slot occupé, interactions 2H/offhand, double-clic rapide, refus d'un objet non équipable et absence de whisper/chat parasite ;
+   - `ITEM_UNEQUIP_V1` utilise l'endpoint spécialisé `RUN~ITEM_UNEQUIP~bot~token~srcSlot~srcItemId` et le résultat structuré `INVENTORY_ITEM_UNEQUIP` ;
+   - le clic droit Inspect convertit le slot client `1..19` en slot Core `0..18`, puis le Bridge revalide le slot équipé et l'`itemId`, capture le GUID et utilise la voie native `CMSG_AUTOSTORE_BAG_ITEM` vers l'inventaire ;
+   - le succès n'est annoncé que si le même GUID est retrouvé hors équipement dans un emplacement physique autorisé Backpack/Sac 1..4 ; aucun appel à `UnequipAction` Playerbots n'est utilisé ;
+   - protections `ITEM_UNEQUIP_V1` : **8 requêtes / 2 s / requester**, TTL anti-rejeu **10 s**, **32** tokens récents maximum par requester et état requester borné à **512** ;
+   - le fallback legacy `ue` n'est possible que lorsque `MultiBot.allowLegacyChatFallback == true`; avec la configuration bridge-first normale (`false`), aucun whisper automatique n'est émis ;
+   - tests en jeu validés : slot simple, main hand, 2H/offhand, inventaire plein, double clic rapide, aucune perte/duplication, rafraîchissement cohérent et zéro chat parasite.
 
-5. **Utilisation native d'un item précis — À ADAPTER**
+5. **Utilisation native d'un item précis — PROCHAIN CHANTIER JELLYPOWERED / À AUDITER-ADAPTER**
    - endpoint spécialisé `ITEM_USE` ;
    - item exact, usage explicitement supporté, cooldown/cast/mouvement/état revalidés ;
    - ne pas considérer l'action réussie avant validation du résultat réel.
@@ -506,3 +514,57 @@ Ces fonctions doivent rester séparées des patches de correction et de sécurit
 - Création d'un checkpoint et d'une archive ZIP avec manifeste SHA-256 et rollback vérifié.
 
 Critère de sortie : version stabilisée, documentée et reproductible du projet Multibot Chatless + Bridge.
+
+<!-- MULTIBOT_JELLYPOWERED_PROGRESS_SYNC_2026-08-16 -->
+<!-- NORMAL_ROADMAP_NEXT=LOOT_RULE_EXACT_ITEM_ADD_REMOVE -->
+
+## État consolidé Jellypowered / inventaire — 16/08/2026
+
+> **Référence de progression actuelle.** Ce bloc supplante les anciens libellés « prochain chantier Jellypowered » conservés plus haut à titre historique. Il ne modifie pas l'ordre de la roadmap normale après clôture du lot Jellypowered.
+
+### Intégré, vérifié et validé
+
+- **Support multi-préfixes addon configurable** : `MBOT` reste le préfixe MultiBot par défaut ; le Bridge utilise une whitelist configurée et répond sur le même préfixe que la requête reçue ; aucun préfixe arbitraire n'est accepté.
+- **Inventaire exact / bag-aware** : `INVENTORY_EXACT_V1`, identité exacte `itemId + bag + slot`, vue globale sans sac sélectionné, Backpack + 4 sacs équipés + Keyring ; l'icône Keyring reste étroite et sans cadre carré spécifique.
+- **Déplacement exact d'item** : `ITEM_MOVE_V1`, source/destination revalidées côté serveur, pas de mutation optimiste côté Addon, rafraîchissement autoritatif après résultat Bridge.
+- **UX drag & drop de `ITEM_MOVE_V1`** : source atténuée pendant le drag, fantôme 32x32 suivant le curseur, `EnableMouse(false)`, détection `GetMouseFocus()` préservée, aucune API native de curseur détournée. Test en jeu validé le 16/08/2026 ; audit final `audit-multibot-item-move-drag-ghost-final-v1-2026-08-16-183942.zip`, SHA-256 `2f149a2cae53fd839fb077c4e2e1298e389038af4737f061eac5e594d05d1c3a`.
+- **Équipement exact** : `ITEM_EQUIP_V1` validé.
+- **Déséquipement exact** : `ITEM_UNEQUIP_V1` validé.
+- **Utilisation native d'un item exact** : `ITEM_USE_V1` validé via endpoint spécialisé et chemin natif `HandleUseItemOpcode`, avec revalidation de la source et résultat serveur autoritatif.
+- **Destruction d'un item exact** : `ITEM_DESTROY` validé via endpoint spécialisé.
+- **Vente unitaire exacte** : `ITEM_SELL_SINGLE_V1` validé avec source exacte, vendeur proche revalidé, protections des objets non vendables/protégés, rate limit/replay et absence de mutation optimiste.
+
+Toutes ces intégrations conservent `mod-playerbots` en **lecture seule stricte** et n'introduisent aucun exécuteur générique de commande Playerbots.
+
+### Audité et différé / non intégré
+
+- `GET~INVENTORY_BULK` : audité ; la forme Extended reste rejetée/différée tant qu'elle duplique sans bénéfice démontré `INVENTORY_EXACT_V1`.
+- `GET~BOT_SKILLS_BULK` : audité ; différé jusqu'à l'apparition d'un consommateur multi-bot réel.
+
+### Jellypowered restant à étudier
+
+L'ordre exact sera redécidé après synchronisation/commit de la branche ; **aucun de ces points n'est marqué comme prochain chantier actif par ce document**.
+
+- `BAG_MOVE` — déplacement/rééquipement de sacs ; priorité faible.
+- `ITEM_TRADE` — item exact, quantité, partenaire, distance, Trade actif, propriété et contrôle du bot ; ne pas régresser `ENCHANT_TRADE_V1`.
+- `QUEST_ABANDON` — endpoint spécialisé uniquement.
+- `QUEST_SHARE` — endpoint spécialisé uniquement.
+- `TALENT_APPLY` — audit strict des API Playerbots locales, points, niveau, reset/coût, combat et dual spec avant toute proposition.
+- `CRAFT_RECIPE_TARGET` — profession/recette/matériaux/outils/cible/Trade à revalider.
+- Banque / banque de guilde / vendeur — comparer avec l'existant et ne reprendre que des améliorations démontrables.
+- Comptage d'inventaire / restauration de sélection — comparer puis adapter uniquement si un défaut actuel est démontré.
+
+### Chantiers suspendus — inchangés
+
+À ne pas reprendre pendant la roadmap normale sauf demande explicite :
+
+- `SELL_GREY` / sell-grey core API / bridge-first ;
+- diagnostic réel final Firestone / Spellstone `TEMP_ENCHANTMENT_SLOT` ;
+- quatre warnings LuaLint restants dans `Strategies/MultiBotWarlock.lua` ;
+- autres petits reliquats déjà explicitement reportés.
+
+### Après le lot Jellypowered
+
+Le **prochain chantier normal** reste : **ajout/retrait d'items précis dans les règles de loot**.
+
+La décision du prochain sous-chantier Jellypowered restant sera prise après la synchronisation manuelle de la branche, à partir de cet état consolidé.

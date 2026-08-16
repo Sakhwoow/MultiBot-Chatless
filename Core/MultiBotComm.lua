@@ -19,6 +19,9 @@ local INVENTORY_EXACT_CAPABILITY = "INVENTORY_EXACT_V1"
 local INVENTORY_ITEM_MOVE_CAPABILITY = "ITEM_MOVE_V1"
 local INVENTORY_ITEM_EQUIP_CAPABILITY = "ITEM_EQUIP_V1"
 local INVENTORY_ITEM_UNEQUIP_CAPABILITY = "ITEM_UNEQUIP_V1"
+local INVENTORY_ITEM_DESTROY_CAPABILITY = "ITEM_DESTROY_V1"
+local INVENTORY_ITEM_USE_CAPABILITY = "ITEM_USE_V1"
+local INVENTORY_ITEM_SELL_CAPABILITY = "ITEM_SELL_SINGLE_V1"
 local INVENTORY_BULK_SELL_CAPABILITY = "INVENTORY_BULK_SELL_V1"
 local INVENTORY_OPEN_CAPABILITY = "INVENTORY_OPEN_V1"
 local GROUP_ROLL_CAPABILITY = "GROUP_ROLL_V1"
@@ -28,8 +31,14 @@ local ENCHANT_TRADE_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_EQUIP_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_UNEQUIP_TIMEOUT_SECONDS = 5.0
+local INVENTORY_ITEM_DESTROY_TIMEOUT_SECONDS = 5.0
+local INVENTORY_ITEM_USE_TIMEOUT_SECONDS = 5.0
+local INVENTORY_ITEM_SELL_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_MAX_COUNT = 1000
 local INVENTORY_ITEM_EQUIP_MAX_COUNT = 1000
+local INVENTORY_ITEM_DESTROY_MAX_COUNT = 1000
+local INVENTORY_ITEM_USE_MAX_COUNT = 1000
+local INVENTORY_ITEM_SELL_MAX_COUNT = 1000
 local ENCHANT_TRADE_MAX_ACTIVE = 8
 local GROUP_ROLL_MAX_ITEM_LINK_LENGTH = 160
 local STATE_TIMEOUT_SECONDS = 5.0
@@ -252,6 +261,9 @@ local function ensureBridgeState()
   state.inventoryItemMoveCapable = state.inventoryItemMoveCapable or false
   state.inventoryItemEquipCapable = state.inventoryItemEquipCapable or false
   state.inventoryItemUnequipCapable = state.inventoryItemUnequipCapable or false
+  state.inventoryItemDestroyCapable = state.inventoryItemDestroyCapable or false
+  state.inventoryItemUseCapable = state.inventoryItemUseCapable or false
+  state.inventoryItemSellCapable = state.inventoryItemSellCapable or false
   state.inventoryBulkSellCapable = state.inventoryBulkSellCapable or false
   state.inventoryOpenCapable = state.inventoryOpenCapable or false
   state.groupRollCapable = state.groupRollCapable or false
@@ -291,6 +303,12 @@ local function ensureBridgeState()
   state.inventoryItemEquips = state.inventoryItemEquips or {}
   state.inventoryItemUnequipSeq = state.inventoryItemUnequipSeq or 0
   state.inventoryItemUnequips = state.inventoryItemUnequips or {}
+  state.inventoryItemDestroySeq = state.inventoryItemDestroySeq or 0
+  state.inventoryItemDestroys = state.inventoryItemDestroys or {}
+  state.inventoryItemUseSeq = state.inventoryItemUseSeq or 0
+  state.inventoryItemUses = state.inventoryItemUses or {}
+  state.inventoryItemSellSeq = state.inventoryItemSellSeq or 0
+  state.inventoryItemSells = state.inventoryItemSells or {}
   state.bankItems = state.bankItems or {}
   state.bankSeq = state.bankSeq or 0
   state.bankActive = state.bankActive or nil
@@ -1801,6 +1819,224 @@ function Comm.RunInventoryItemUnequip(name, srcSlot, srcItemId)
   return token
 end
 
+function Comm.IsInventoryItemDestroyCapable()
+  local state = ensureBridgeState()
+  return state.connected == true and state.inventoryExactCapable == true and state.inventoryItemDestroyCapable == true
+end
+
+function Comm.RunInventoryItemDestroy(name, srcBag, srcSlot, srcItemId, srcCount)
+  local state = ensureBridgeState()
+  name = trim(name)
+
+  srcBag = parseBoundedInteger(tostring(srcBag or ""), 0, 255)
+  srcSlot = parseBoundedInteger(tostring(srcSlot or ""), 0, 255)
+  srcItemId = parseBoundedInteger(tostring(srcItemId or ""), 1, 4294967295)
+  srcCount = parseBoundedInteger(tostring(srcCount or ""), 1, INVENTORY_ITEM_DESTROY_MAX_COUNT)
+
+  if name == "" or not state.connected or state.inventoryExactCapable ~= true or state.inventoryItemDestroyCapable ~= true then
+    return false
+  end
+  if srcBag == nil or srcSlot == nil or not srcItemId or not srcCount then
+    return false
+  end
+
+  state.inventoryItemDestroySeq = (tonumber(state.inventoryItemDestroySeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-destroy-" .. tostring(state.inventoryItemDestroySeq)
+  local command = {
+    token = token,
+    botName = name,
+    botNameKey = string.lower(name),
+    srcBag = srcBag,
+    srcSlot = srcSlot,
+    srcItemId = srcItemId,
+    srcCount = srcCount,
+    startedAt = safeNow(),
+  }
+  state.inventoryItemDestroys[token] = command
+
+  local payload = table.concat({
+    "ITEM_DESTROY", name, token,
+    tostring(srcBag), tostring(srcSlot), tostring(srcItemId), tostring(srcCount),
+  }, "~")
+
+  if not Comm.Send("RUN", payload) then
+    state.inventoryItemDestroys[token] = nil
+    return false
+  end
+
+  safeDelay(INVENTORY_ITEM_DESTROY_TIMEOUT_SECONDS, function()
+    local bridgeState = ensureBridgeState()
+    local pending = bridgeState.inventoryItemDestroys and bridgeState.inventoryItemDestroys[token] or nil
+    if not pending then
+      return
+    end
+
+    bridgeState.inventoryItemDestroys[token] = nil
+    bridgeState.lastError = "ITEM_DESTROY_TIMEOUT"
+    if MultiBot.OnBridgeInventoryItemDestroyResult then
+      MultiBot.OnBridgeInventoryItemDestroyResult(
+        pending.botName, "ERR", "TIMEOUT",
+        pending.srcBag, pending.srcSlot, pending.srcItemId, pending
+      )
+    end
+  end)
+
+  return token
+end
+function Comm.IsInventoryItemUseCapable()
+  local state = ensureBridgeState()
+  return state.connected == true and state.inventoryExactCapable == true and state.inventoryItemUseCapable == true
+end
+
+function Comm.RunInventoryItemUse(name, srcBag, srcSlot, srcItemId, srcCount)
+  local state = ensureBridgeState()
+  name = trim(name)
+
+  srcBag = parseBoundedInteger(tostring(srcBag or ""), 0, 255)
+  srcSlot = parseBoundedInteger(tostring(srcSlot or ""), 0, 255)
+  srcItemId = parseBoundedInteger(tostring(srcItemId or ""), 1, 4294967295)
+  srcCount = parseBoundedInteger(tostring(srcCount or ""), 1, INVENTORY_ITEM_USE_MAX_COUNT)
+
+  if name == "" or not state.connected or state.inventoryExactCapable ~= true or state.inventoryItemUseCapable ~= true then
+    return false
+  end
+  if srcBag == nil or srcSlot == nil or not srcItemId or not srcCount then
+    return false
+  end
+
+  local botNameKey = string.lower(name)
+  for _, pending in pairs(state.inventoryItemUses or {}) do
+    if pending.botNameKey == botNameKey
+        and pending.srcBag == srcBag
+        and pending.srcSlot == srcSlot
+        and pending.srcItemId == srcItemId
+        and pending.srcCount == srcCount then
+      return false
+    end
+  end
+
+  state.inventoryItemUseSeq = (tonumber(state.inventoryItemUseSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-use-" .. tostring(state.inventoryItemUseSeq)
+  local command = {
+    token = token,
+    botName = name,
+    botNameKey = botNameKey,
+    srcBag = srcBag,
+    srcSlot = srcSlot,
+    srcItemId = srcItemId,
+    srcCount = srcCount,
+    startedAt = safeNow(),
+  }
+  state.inventoryItemUses[token] = command
+
+  local payload = table.concat({
+    "ITEM_USE", name, token,
+    tostring(srcBag), tostring(srcSlot), tostring(srcItemId), tostring(srcCount),
+  }, "~")
+
+  if not Comm.Send("RUN", payload) then
+    state.inventoryItemUses[token] = nil
+    return false
+  end
+
+  safeDelay(INVENTORY_ITEM_USE_TIMEOUT_SECONDS, function()
+    local bridgeState = ensureBridgeState()
+    local pending = bridgeState.inventoryItemUses and bridgeState.inventoryItemUses[token] or nil
+    if not pending then
+      return
+    end
+
+    bridgeState.inventoryItemUses[token] = nil
+    bridgeState.lastError = "ITEM_USE_TIMEOUT"
+    if MultiBot.OnBridgeInventoryItemUseResult then
+      MultiBot.OnBridgeInventoryItemUseResult(
+        pending.botName, "ERR", "TIMEOUT",
+        pending.srcBag, pending.srcSlot, pending.srcItemId, pending
+      )
+    end
+  end)
+
+  return token
+end
+
+-- MB_ITEM_SELL_SINGLE_V1_COMM_BEGIN
+function Comm.IsInventoryItemSellCapable()
+  local state = ensureBridgeState()
+  return state.connected == true and state.inventoryExactCapable == true and state.inventoryItemSellCapable == true
+end
+
+function Comm.RunInventoryItemSell(name, srcBag, srcSlot, srcItemId, srcCount)
+  local state = ensureBridgeState()
+  name = trim(name)
+
+  srcBag = parseBoundedInteger(tostring(srcBag or ""), 0, 255)
+  srcSlot = parseBoundedInteger(tostring(srcSlot or ""), 0, 255)
+  srcItemId = parseBoundedInteger(tostring(srcItemId or ""), 1, 4294967295)
+  srcCount = parseBoundedInteger(tostring(srcCount or ""), 1, INVENTORY_ITEM_SELL_MAX_COUNT)
+
+  if name == "" or not state.connected or state.inventoryExactCapable ~= true or state.inventoryItemSellCapable ~= true then
+    return false
+  end
+  if srcBag == nil or srcSlot == nil or not srcItemId or not srcCount then
+    return false
+  end
+
+  local botNameKey = string.lower(name)
+  for _, pending in pairs(state.inventoryItemSells or {}) do
+    if pending.botNameKey == botNameKey
+        and pending.srcBag == srcBag
+        and pending.srcSlot == srcSlot
+        and pending.srcItemId == srcItemId
+        and pending.srcCount == srcCount then
+      return false
+    end
+  end
+
+  state.inventoryItemSellSeq = (tonumber(state.inventoryItemSellSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-sell-" .. tostring(state.inventoryItemSellSeq)
+  local command = {
+    token = token,
+    botName = name,
+    botNameKey = botNameKey,
+    srcBag = srcBag,
+    srcSlot = srcSlot,
+    srcItemId = srcItemId,
+    srcCount = srcCount,
+    startedAt = safeNow(),
+  }
+  state.inventoryItemSells[token] = command
+
+  local payload = table.concat({
+    "ITEM_SELL", name, token,
+    tostring(srcBag), tostring(srcSlot), tostring(srcItemId), tostring(srcCount),
+  }, "~")
+
+  if not Comm.Send("RUN", payload) then
+    state.inventoryItemSells[token] = nil
+    return false
+  end
+
+  safeDelay(INVENTORY_ITEM_SELL_TIMEOUT_SECONDS, function()
+    local bridgeState = ensureBridgeState()
+    local pending = bridgeState.inventoryItemSells and bridgeState.inventoryItemSells[token] or nil
+    if not pending then
+      return
+    end
+
+    bridgeState.inventoryItemSells[token] = nil
+    bridgeState.lastError = "ITEM_SELL_TIMEOUT"
+    if MultiBot.OnBridgeInventoryItemSellResult then
+      MultiBot.OnBridgeInventoryItemSellResult(
+        pending.botName, "ERR", "TIMEOUT",
+        pending.srcBag, pending.srcSlot, pending.srcItemId, 0, pending
+      )
+    end
+  end)
+
+  return token
+end
+-- MB_ITEM_SELL_SINGLE_V1_COMM_END
+
 function Comm.RequestBank(name)
   local state = ensureBridgeState()
   name = trim(name)
@@ -2297,6 +2533,33 @@ function Comm.MarkDisconnected(reason)
     end
   end
   state.inventoryItemUnequips = {}
+  for _, command in pairs(state.inventoryItemDestroys or {}) do
+    if MultiBot.OnBridgeInventoryItemDestroyResult then
+      MultiBot.OnBridgeInventoryItemDestroyResult(
+        command.botName or "", "ERR", "DISCONNECTED",
+        command.srcBag or 0, command.srcSlot or 0, command.srcItemId or 0, command
+      )
+    end
+  end
+  state.inventoryItemDestroys = {}
+  for _, command in pairs(state.inventoryItemUses or {}) do
+    if MultiBot.OnBridgeInventoryItemUseResult then
+      MultiBot.OnBridgeInventoryItemUseResult(
+        command.botName or "", "ERR", "DISCONNECTED",
+        command.srcBag or 0, command.srcSlot or 0, command.srcItemId or 0, command
+      )
+    end
+  end
+  state.inventoryItemUses = {}
+  for _, command in pairs(state.inventoryItemSells or {}) do
+    if MultiBot.OnBridgeInventoryItemSellResult then
+      MultiBot.OnBridgeInventoryItemSellResult(
+        command.botName or "", "ERR", "DISCONNECTED",
+        command.srcBag or 0, command.srcSlot or 0, command.srcItemId or 0, 0, command
+      )
+    end
+  end
+  state.inventoryItemSells = {}
 
   state.bankActive = nil
   state.guildBankActive = nil
@@ -2353,6 +2616,9 @@ function Comm.MarkDisconnected(reason)
   state.inventoryItemMoveCapable = false
   state.inventoryItemEquipCapable = false
   state.inventoryItemUnequipCapable = false
+  state.inventoryItemDestroyCapable = false
+  state.inventoryItemUseCapable = false
+  state.inventoryItemSellCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
@@ -4106,6 +4372,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.inventoryExactCapable = false
     state.inventoryItemEquipCapable = false
     state.inventoryItemUnequipCapable = false
+    state.inventoryItemDestroyCapable = false
+    state.inventoryItemUseCapable = false
+    state.inventoryItemSellCapable = false
     state.inventoryBulkSellCapable = false
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
@@ -4128,6 +4397,12 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.inventoryItemEquipCapable = true
       elseif capability == INVENTORY_ITEM_UNEQUIP_CAPABILITY then
         state.inventoryItemUnequipCapable = true
+      elseif capability == INVENTORY_ITEM_DESTROY_CAPABILITY then
+        state.inventoryItemDestroyCapable = true
+      elseif capability == INVENTORY_ITEM_USE_CAPABILITY then
+        state.inventoryItemUseCapable = true
+      elseif capability == INVENTORY_ITEM_SELL_CAPABILITY then
+        state.inventoryItemSellCapable = true
       elseif capability == INVENTORY_BULK_SELL_CAPABILITY then
         state.inventoryBulkSellCapable = true
       elseif capability == INVENTORY_OPEN_CAPABILITY then
@@ -5005,6 +5280,194 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     return true
   end
 
+  -- MB_ITEM_SELL_SINGLE_V1_RX_BEGIN
+  if opcode == "INVENTORY_ITEM_SELL" then
+    local fields = splitFields(payload)
+    if #fields ~= 8 then
+      state.lastError = "ITEM_SELL_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = urlDecodeFieldStrict(fields[4], 64, false)
+    local srcBag = parseBoundedInteger(fields[5], 0, 255)
+    local srcSlot = parseBoundedInteger(fields[6], 0, 255)
+    local srcItemId = parseBoundedInteger(fields[7], 1, 4294967295)
+    local soldCount = parseBoundedInteger(fields[8], 0, INVENTORY_ITEM_SELL_MAX_COUNT)
+
+    state.connected = true
+    local command = state.inventoryItemSells and state.inventoryItemSells[token] or nil
+    if not botName or not isValidStateToken(token) or (status ~= "OK" and status ~= "ERR") or not reason or
+      srcBag == nil or srcSlot == nil or srcItemId == nil or soldCount == nil then
+      state.lastError = "ITEM_SELL_BAD_RESPONSE"
+      if command then
+        state.inventoryItemSells[token] = nil
+        if MultiBot.OnBridgeInventoryItemSellResult then
+          MultiBot.OnBridgeInventoryItemSellResult(
+            command.botName, "ERR", "BAD_RESPONSE",
+            command.srcBag, command.srcSlot, command.srcItemId, 0, command
+          )
+        end
+      end
+      return true
+    end
+
+    if not command then
+      return true
+    end
+
+    local responseMatches = string.lower(botName) == command.botNameKey and
+      srcBag == command.srcBag and srcSlot == command.srcSlot and srcItemId == command.srcItemId and
+      soldCount <= command.srcCount and
+      ((status == "OK" and soldCount >= 1) or (status == "ERR" and soldCount == 0))
+
+    state.inventoryItemSells[token] = nil
+    if not responseMatches then
+      status = "ERR"
+      reason = "RESPONSE_MISMATCH"
+      soldCount = 0
+      state.lastError = "ITEM_SELL_RESPONSE_MISMATCH"
+    elseif status == "OK" then
+      state.lastError = nil
+    else
+      state.lastError = "ITEM_SELL_" .. reason
+    end
+
+    if MultiBot.OnBridgeInventoryItemSellResult then
+      MultiBot.OnBridgeInventoryItemSellResult(
+        command.botName, status, reason,
+        command.srcBag, command.srcSlot, command.srcItemId, soldCount, command
+      )
+    end
+
+    debugPrint("ADDON:RX", "INVENTORY_ITEM_SELL", botName, token, status, reason, srcBag, srcSlot, srcItemId, soldCount)
+    return true
+  end
+  -- MB_ITEM_SELL_SINGLE_V1_RX_END
+
+  if opcode == "INVENTORY_ITEM_USE" then
+    local fields = splitFields(payload)
+    if #fields ~= 7 then
+      state.lastError = "ITEM_USE_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = urlDecodeFieldStrict(fields[4], 64, false)
+    local srcBag = parseBoundedInteger(fields[5], 0, 255)
+    local srcSlot = parseBoundedInteger(fields[6], 0, 255)
+    local srcItemId = parseBoundedInteger(fields[7], 1, 4294967295)
+
+    state.connected = true
+    local command = state.inventoryItemUses and state.inventoryItemUses[token] or nil
+    if not botName or not isValidStateToken(token) or (status ~= "OK" and status ~= "ERR") or not reason or
+      srcBag == nil or srcSlot == nil or srcItemId == nil then
+      state.lastError = "ITEM_USE_BAD_RESPONSE"
+      if command then
+        state.inventoryItemUses[token] = nil
+        if MultiBot.OnBridgeInventoryItemUseResult then
+          MultiBot.OnBridgeInventoryItemUseResult(
+            command.botName, "ERR", "BAD_RESPONSE",
+            command.srcBag, command.srcSlot, command.srcItemId, command
+          )
+        end
+      end
+      return true
+    end
+
+    if not command then
+      return true
+    end
+
+    local responseMatches = string.lower(botName) == command.botNameKey and
+      srcBag == command.srcBag and srcSlot == command.srcSlot and srcItemId == command.srcItemId
+
+    state.inventoryItemUses[token] = nil
+    if not responseMatches then
+      status = "ERR"
+      reason = "RESPONSE_MISMATCH"
+      state.lastError = "ITEM_USE_RESPONSE_MISMATCH"
+    elseif status == "OK" then
+      state.lastError = nil
+    else
+      state.lastError = "ITEM_USE_" .. reason
+    end
+
+    if MultiBot.OnBridgeInventoryItemUseResult then
+      MultiBot.OnBridgeInventoryItemUseResult(
+        command.botName, status, reason,
+        command.srcBag, command.srcSlot, command.srcItemId, command
+      )
+    end
+
+    debugPrint("ADDON:RX", "INVENTORY_ITEM_USE", botName, token, status, reason, srcBag, srcSlot, srcItemId)
+    return true
+  end
+
+  if opcode == "INVENTORY_ITEM_DESTROY" then
+    local fields = splitFields(payload)
+    if #fields ~= 7 then
+      state.lastError = "ITEM_DESTROY_BAD_FIELD_COUNT"
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = urlDecodeFieldStrict(fields[4], 64, false)
+    local srcBag = parseBoundedInteger(fields[5], 0, 255)
+    local srcSlot = parseBoundedInteger(fields[6], 0, 255)
+    local srcItemId = parseBoundedInteger(fields[7], 1, 4294967295)
+
+    state.connected = true
+    local command = state.inventoryItemDestroys and state.inventoryItemDestroys[token] or nil
+    if not botName or not isValidStateToken(token) or (status ~= "OK" and status ~= "ERR") or not reason or
+      srcBag == nil or srcSlot == nil or srcItemId == nil then
+      state.lastError = "ITEM_DESTROY_BAD_RESPONSE"
+      if command then
+        state.inventoryItemDestroys[token] = nil
+        if MultiBot.OnBridgeInventoryItemDestroyResult then
+          MultiBot.OnBridgeInventoryItemDestroyResult(
+            command.botName, "ERR", "BAD_RESPONSE",
+            command.srcBag, command.srcSlot, command.srcItemId, command
+          )
+        end
+      end
+      return true
+    end
+
+    if not command then
+      return true
+    end
+
+    local responseMatches = string.lower(botName) == command.botNameKey and
+      srcBag == command.srcBag and srcSlot == command.srcSlot and srcItemId == command.srcItemId
+
+    state.inventoryItemDestroys[token] = nil
+    if not responseMatches then
+      status = "ERR"
+      reason = "RESPONSE_MISMATCH"
+      state.lastError = "ITEM_DESTROY_RESPONSE_MISMATCH"
+    elseif status == "OK" then
+      state.lastError = nil
+    else
+      state.lastError = "ITEM_DESTROY_" .. reason
+    end
+
+    if MultiBot.OnBridgeInventoryItemDestroyResult then
+      MultiBot.OnBridgeInventoryItemDestroyResult(
+        command.botName, status, reason,
+        command.srcBag, command.srcSlot, command.srcItemId, command
+      )
+    end
+
+    debugPrint("ADDON:RX", "INVENTORY_ITEM_DESTROY", botName, token, status, reason, srcBag, srcSlot, srcItemId)
+    return true
+  end
   if opcode == "INVENTORY_ITEM_ACTION" then
     local botName, rest = splitOnce(payload or "", "~")
     local token, rest2 = splitOnce(rest or "", "~")
@@ -5985,6 +6448,9 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryItemMoveCapable = false
   state.inventoryItemEquipCapable = false
   state.inventoryItemUnequipCapable = false
+  state.inventoryItemDestroyCapable = false
+  state.inventoryItemUseCapable = false
+  state.inventoryItemSellCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false

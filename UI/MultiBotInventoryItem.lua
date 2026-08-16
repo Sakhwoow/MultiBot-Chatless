@@ -277,7 +277,53 @@ local function requestInventoryPostActionRefresh(botName, firstDelay, secondDela
     requestInventoryRefresh(firstDelay or 0.45, targetBotName)
 end
 
+local runBridgeInventoryItemDestroy
+
+local function buildInventoryDestroyRequest(button, botName)
+    if not button or not button.item or not botName or botName == "" then
+        return nil
+    end
+
+    local item = button.item
+    local count = tonumber(item._serverCount or item.count or 1) or 1
+    local request = {
+        botName = botName,
+        srcBag = tonumber(item.bag),
+        srcSlot = tonumber(item.slot),
+        srcItemId = tonumber(item.id or 0) or 0,
+        srcCount = count,
+        exactLocation = item.exactLocation == true,
+        link = item.link,
+        tip = tostring(button.tip or item.link or ""),
+    }
+
+    if request.srcCount < 1 or request.srcItemId <= 0 then
+        return nil
+    end
+
+    return request
+end
+
+local function runLegacyInventoryItemDestroy(request)
+    if MultiBot.allowLegacyChatFallback ~= true or type(request) ~= "table" then
+        return false
+    end
+
+    if not request.botName or request.botName == "" or not request.tip or request.tip == "" then
+        return false
+    end
+
+    SendChatMessage("destroy " .. request.tip, "WHISPER", nil, request.botName)
+    requestInventoryPostActionRefresh(request.botName, 0.45, 1.20)
+    return true
+end
+
 local function bindInventoryDestroyConfirm(button, botName)
+    local request = buildInventoryDestroyRequest(button, botName)
+    if not request then
+        return false
+    end
+
     if not StaticPopupDialogs["MULTIBOT_CONFIRM_DESTROY"] then
         StaticPopupDialogs["MULTIBOT_CONFIRM_DESTROY"] = {
             text = inventoryItemL("itemdestroyalert", "Are you sure you want to destroy this item?"),
@@ -287,18 +333,22 @@ local function bindInventoryDestroyConfirm(button, botName)
             whileDead = 1,
             hideOnEscape = 1,
             OnAccept = function(_, data)
-                if not data or not data.button then return end
-                sendInventoryItemCommand("destroy", data.button, data.botName, {
-                    hideButton = true,
-                })
+                local acceptedRequest = data and data.request or nil
+                if not acceptedRequest then return end
+
+                if runBridgeInventoryItemDestroy and runBridgeInventoryItemDestroy(acceptedRequest) then
+                    return
+                end
+
+                runLegacyInventoryItemDestroy(acceptedRequest)
             end,
         }
     end
 
-    StaticPopup_Show("MULTIBOT_CONFIRM_DESTROY", button.item.link, nil, {
-        button = button,
-        botName = botName,
+    StaticPopup_Show("MULTIBOT_CONFIRM_DESTROY", request.link, nil, {
+        request = request,
     })
+    return true
 end
 
 local function sendInventoryFeedback(key, fallback)
@@ -409,6 +459,64 @@ local function runBridgeInventoryItemAction(action, button, botName, options)
     return true
 end
 
+-- MB_ITEM_SELL_SINGLE_V1_HELPER_BEGIN
+local function runBridgeInventoryItemSell(button, botName)
+    if not button or not button.item or not botName or botName == "" then
+        return false
+    end
+
+    local item = button.item
+    if item.exactLocation ~= true then
+        return false
+    end
+
+    local srcBag = tonumber(item.bag)
+    local srcSlot = tonumber(item.slot)
+    local itemId = tonumber(item.id or 0) or 0
+    local count = tonumber(item._serverCount or item.count or 1) or 1
+    if srcBag == nil or srcSlot == nil or itemId <= 0 or count < 1 then
+        return false
+    end
+
+    if not MultiBot.Comm or not MultiBot.Comm.RunInventoryItemSell then
+        return false
+    end
+
+    local token = MultiBot.Comm.RunInventoryItemSell(
+        botName, srcBag, srcSlot, itemId, count
+    )
+    return token and true or false
+end
+-- MB_ITEM_SELL_SINGLE_V1_HELPER_END
+
+local function runBridgeInventoryItemUse(button, botName)
+    if not button or not button.item or not botName or botName == "" then
+        return false
+    end
+
+    local item = button.item
+    if item.exactLocation ~= true then
+        return false
+    end
+
+    local srcBag = tonumber(item.bag)
+    local srcSlot = tonumber(item.slot)
+    local itemId = tonumber(item.id or 0) or 0
+    local count = tonumber(item._serverCount or item.count or 1) or 1
+    if srcBag == nil or srcSlot == nil or itemId <= 0 or count < 1 then
+        return false
+    end
+
+    if not MultiBot.Comm or not MultiBot.Comm.RunInventoryItemUse then
+        return false
+    end
+
+    local token = MultiBot.Comm.RunInventoryItemUse(
+        botName, srcBag, srcSlot, itemId, count
+    )
+    return token and true or false
+end
+
 local function runBridgeInventoryItemEquip(button, botName)
     if not button or not button.item or not botName or botName == "" then
         return false
@@ -435,6 +543,36 @@ local function runBridgeInventoryItemEquip(button, botName)
     return token and true or false
 end
 
+runBridgeInventoryItemDestroy = function(request)
+    if type(request) ~= "table" or request.exactLocation ~= true then
+        return false
+    end
+
+    local srcBag = tonumber(request.srcBag)
+    local srcSlot = tonumber(request.srcSlot)
+    local itemId = tonumber(request.srcItemId or 0) or 0
+    local count = tonumber(request.srcCount or 0) or 0
+    if srcBag == nil or srcSlot == nil or itemId <= 0 or count < 1 then
+        return false
+    end
+
+    if not MultiBot.Comm or not MultiBot.Comm.RunInventoryItemDestroy then
+        return false
+    end
+
+    local token = MultiBot.Comm.RunInventoryItemDestroy(
+        request.botName, srcBag, srcSlot, itemId, count
+    )
+    return token and true or false
+end
+
+MultiBot.OnBridgeInventoryItemDestroyResult = function(botName, _, reason)
+    if reason == "DISCONNECTED" then
+        return
+    end
+
+    requestInventoryRefresh(0.15, botName)
+end
 local function handleInventoryItemClick(button)
     local action, botName = getInventoryItemActionState()
     local item = button and button.item or nil
@@ -444,12 +582,8 @@ local function handleInventoryItemClick(button)
         return
     end
 
+    -- MB_ITEM_SELL_SINGLE_V1_ACTION_BEGIN
     if action == "s" then
-        if not MultiBot.isTarget() then
-            sendInventoryFeedback("inventoryvendortarget", "Target a vendor first")
-            return
-        end
-
         if isInventoryProtectedQuestItem(item) then
             sendInventoryFeedback("questitemsellalert", "I cannot sell quest items.")
             return
@@ -465,12 +599,41 @@ local function handleInventoryItemClick(button)
             return
         end
 
-        sendInventoryItemCommand(action, button, botName, {
-            hideButton = true,
-            refreshDelay = 0.3,
-        })
+        local bridgeCapable = MultiBot.Comm
+            and MultiBot.Comm.IsInventoryItemSellCapable
+            and MultiBot.Comm.IsInventoryItemSellCapable()
+
+        if bridgeCapable then
+            if runBridgeInventoryItemSell(button, botName) then
+                return
+            end
+
+            addInventorySystemMessage(inventoryItemL(
+                "inventory.item_sell.send_failed",
+                "The item-sale request could not be sent."
+            ))
+            return
+        end
+
+        if MultiBot.allowLegacyChatFallback == true then
+            if not MultiBot.isTarget() then
+                sendInventoryFeedback("inventoryvendortarget", "Target a vendor first")
+                return
+            end
+
+            sendInventoryItemCommand(action, button, botName, {
+                hideButton = true,
+                refreshDelay = 0.3,
+            })
+        else
+            addInventorySystemMessage(inventoryItemL(
+                "inventory.item_sell.unavailable",
+                "Item selling via the bridge is unavailable."
+            ))
+        end
         return
     end
+    -- MB_ITEM_SELL_SINGLE_V1_ACTION_END
 
     if action == "e" then
         if runBridgeInventoryItemEquip(button, botName) then
@@ -526,13 +689,36 @@ local function handleInventoryItemClick(button)
     end
 
     if action == "u" then
-        registerInventoryPendingConsume(botName, item, 1)
-        sendInventoryItemCommand(action, button, botName, {
-            optimisticConsume = true,
-            postActionRefresh = true,
-            refreshDelay = 0.45,
-            followupRefreshDelay = 1.20,
-        })
+        local bridgeCapable = MultiBot.Comm
+            and MultiBot.Comm.IsInventoryItemUseCapable
+            and MultiBot.Comm.IsInventoryItemUseCapable()
+
+        if bridgeCapable then
+            if runBridgeInventoryItemUse(button, botName) then
+                return
+            end
+
+            addInventorySystemMessage(inventoryItemL(
+                "inventory.item_use.send_failed",
+                "The item-use request could not be sent."
+            ))
+            return
+        end
+
+        if MultiBot.allowLegacyChatFallback == true then
+            registerInventoryPendingConsume(botName, item, 1)
+            sendInventoryItemCommand(action, button, botName, {
+                optimisticConsume = true,
+                postActionRefresh = true,
+                refreshDelay = 0.45,
+                followupRefreshDelay = 1.20,
+            })
+        else
+            addInventorySystemMessage(inventoryItemL(
+                "inventory.item_use.unavailable",
+                "Item use via the bridge is unavailable."
+            ))
+        end
         return
     end
 
@@ -545,9 +731,16 @@ local function handleInventoryItemClick(button)
         return
     end
 
-    sendInventoryItemCommand(action, button, botName, {
-        hideButton = true,
-    })
+    local destroyRequest = buildInventoryDestroyRequest(button, botName)
+    if not destroyRequest then
+        return
+    end
+
+    if runBridgeInventoryItemDestroy(destroyRequest) then
+        return
+    end
+
+    runLegacyInventoryItemDestroy(destroyRequest)
 end
 
 local function getInventoryItemActionLabel(action)
@@ -566,6 +759,61 @@ local function getInventoryItemActionReason(reason)
         "The server returned an unknown item-action error."
     )
     return inventoryItemL("inventory.item_action.reason." .. reason, fallback)
+end
+
+-- MB_ITEM_SELL_SINGLE_V1_CALLBACK_BEGIN
+local function getInventoryItemSellReason(reason)
+    reason = tostring(reason or "")
+    if reason == "" or reason == "OK" then
+        return ""
+    end
+
+    local fallback = inventoryItemL(
+        "inventory.item_sell.reason.UNKNOWN",
+        "The server returned an unknown item-sale error."
+    )
+    return inventoryItemL("inventory.item_sell.reason." .. reason, fallback)
+end
+
+function MultiBot.OnBridgeInventoryItemSellResult(botName, result, reason)
+    if reason == "DISCONNECTED" then
+        return
+    end
+
+    if result == "OK" then
+        requestInventoryRefresh(0.30, botName)
+        return
+    end
+
+    addInventorySystemMessage(string.format(
+        inventoryItemL("inventory.item_sell.err", "Failed to sell item: %s"),
+        getInventoryItemSellReason(reason)
+    ))
+
+    if reason == "SOURCE_STALE" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" then
+        requestInventoryRefresh(0.15, botName)
+    end
+end
+-- MB_ITEM_SELL_SINGLE_V1_CALLBACK_END
+
+function MultiBot.OnBridgeInventoryItemUseResult(botName, result, reason)
+    if reason == "DISCONNECTED" then
+        return
+    end
+
+    if result == "OK" then
+        requestInventoryRefresh(0.45, botName)
+        return
+    end
+
+    addInventorySystemMessage(string.format(
+        inventoryItemL("inventory.item_use.err", "Use failed: %s"),
+        tostring(reason or "UNKNOWN")
+    ))
+
+    if reason == "SOURCE_STALE" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" then
+        requestInventoryRefresh(0.15, botName)
+    end
 end
 
 function MultiBot.OnBridgeInventoryItemActionResult(botName, action, itemId, result, reason, moved)

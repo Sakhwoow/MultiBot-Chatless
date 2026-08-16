@@ -1228,6 +1228,11 @@ local function setInventoryBotName(botName)
 
     inventory.name = botName or ""
 
+    if MultiBot.inventoryBuybackFrame and MultiBot.inventoryBuybackFrame.botName ~= "" and
+        MultiBot.inventoryBuybackFrame.botName ~= inventory.name then
+        MultiBot.inventoryBuybackFrame:Hide()
+    end
+
     if inventory.window and inventory.window.SetTitle then
         inventory.window:SetTitle(getInventoryWindowTitle(inventory.name))
     end
@@ -1280,6 +1285,9 @@ local function closeInventoryWindow()
     if not inventory then return end
     if inventory.window then
         inventory.window:Hide()
+    end
+    if MultiBot.inventoryBuybackFrame then
+        MultiBot.inventoryBuybackFrame:Hide()
     end
     syncInventoryButtonState(false)
     resetInventoryViewState()
@@ -1580,6 +1588,436 @@ local function runInventoryInstantAction(botName, command, options)
     return true
 end
 
+-- MB_VENDOR_BUYBACK_V1_UI_BEGIN
+local BUYBACK_MAX_ITEMS = 12
+local BUYBACK_COLUMNS = 2
+local BUYBACK_ROWS = 6
+local BUYBACK_ROW_WIDTH = 238
+local BUYBACK_ROW_HEIGHT = 48
+local BUYBACK_COLUMN_GAP = 10
+local BUYBACK_ROW_GAP = 6
+
+local function formatInventoryBuybackMoney(copperValue)
+    local total = math.max(0, tonumber(copperValue or 0) or 0)
+    local gold = math.floor(total / 10000)
+    local silver = math.floor((total % 10000) / 100)
+    local copper = total % 100
+    local parts = {}
+
+    if gold > 0 then
+        table.insert(parts, gold .. " |TInterface\\MoneyFrame\\UI-GoldIcon:12:12:2:0|t")
+    end
+    if silver > 0 or gold > 0 then
+        table.insert(parts, silver .. " |TInterface\\MoneyFrame\\UI-SilverIcon:12:12:2:0|t")
+    end
+    if copper > 0 or #parts == 0 then
+        table.insert(parts, copper .. " |TInterface\\MoneyFrame\\UI-CopperIcon:12:12:2:0|t")
+    end
+
+    return table.concat(parts, " ")
+end
+
+local function getInventoryBuybackReasonText(reason)
+    local code = tostring(reason or "UNKNOWN")
+    if code == "" then
+        code = "UNKNOWN"
+    end
+    return MultiBot.L("inventory.buyback.reason." .. code, code)
+end
+
+local function ensureInventoryBuybackFrame()
+    if MultiBot.inventoryBuybackFrame then
+        return MultiBot.inventoryBuybackFrame
+    end
+
+    local aceGUI = getInventoryAceGUI()
+    if not aceGUI then
+        UIErrorsFrame:AddMessage("AceGUI-3.0 is required for Buyback", 1, 0.2, 0.2, 1)
+        return nil
+    end
+
+    local window = aceGUI:Create("Window")
+    window:SetTitle(MultiBot.L("inventory.buyback.title", "Buyback - %s"):format("-"))
+    window:SetLayout("Manual")
+    window:SetWidth(520)
+    window:SetHeight(410)
+    window:EnableResize(false)
+    window.frame:SetClampedToScreen(true)
+    window.frame:ClearAllPoints()
+    window.frame:SetPoint("CENTER", UIParent, "CENTER", 210, 0)
+
+    local strataLevel = MultiBot.GetGlobalStrataLevel and MultiBot.GetGlobalStrataLevel()
+    if strataLevel then
+        window.frame:SetFrameStrata(strataLevel)
+    else
+        window.frame:SetFrameStrata("DIALOG")
+    end
+
+    window:SetCallback("OnClose", function(widget)
+        widget:Hide()
+    end)
+    registerInventoryEscapeClose(window, "Buyback")
+
+    local frame = window
+    local content = window.content
+    content:SetPoint("TOPLEFT", window.frame, "TOPLEFT", 10, -30)
+    content:SetPoint("BOTTOMRIGHT", window.frame, "BOTTOMRIGHT", -10, 10)
+
+    frame.root = CreateFrame("Frame", nil, content)
+    frame.root:SetAllPoints(content)
+    addSimpleBackdrop(frame.root, 0.90)
+
+    frame.status = frame.root:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    frame.status:SetPoint("BOTTOMLEFT", frame.root, "BOTTOMLEFT", 10, 9)
+    frame.status:SetPoint("BOTTOMRIGHT", frame.root, "BOTTOM", 50, 9)
+    frame.status:SetJustifyH("LEFT")
+    frame.status:SetText("")
+
+    frame.totalLabel = frame.root:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.totalLabel:SetPoint("BOTTOMLEFT", frame.root, "BOTTOM", 50, 9)
+    frame.totalLabel:SetPoint("BOTTOMRIGHT", frame.root, "BOTTOMRIGHT", -10, 9)
+    frame.totalLabel:SetJustifyH("RIGHT")
+    frame.totalLabel:SetText("")
+
+    function frame:IsShown()
+        return self.frame and self.frame.IsShown and self.frame:IsShown() or false
+    end
+
+    frame.rows = {}
+    frame.buttons = frame.rows
+    frame.botName = ""
+    frame.pendingToken = nil
+    frame.listToken = nil
+
+    function frame:setBotName(botName)
+        self.botName = botName or ""
+        self:SetTitle(string.format(
+            MultiBot.L("inventory.buyback.title", "Buyback - %s"),
+            self.botName ~= "" and self.botName or "-"
+        ))
+    end
+
+    function frame:setStatus(text)
+        if self.status then
+            self.status:SetText(text or "")
+        end
+    end
+
+    function frame:clearItems()
+        for _, row in ipairs(self.rows or {}) do
+            row.entry = nil
+            row:EnableMouse(false)
+            if row.SetBackdropBorderColor then
+                row:SetBackdropBorderColor(0.42, 0.42, 0.42, 0.92)
+            end
+            if row.icon then
+                row.icon:SetTexture(nil)
+            end
+            if row.countLabel then
+                row.countLabel:SetText("")
+            end
+            if row.nameLabel then
+                row.nameLabel:SetText("")
+            end
+            if row.priceLabel then
+                row.priceLabel:SetText("")
+            end
+            row:Show()
+        end
+        if self.totalLabel then
+            self.totalLabel:SetText("")
+        end
+    end
+
+    for index = 1, BUYBACK_MAX_ITEMS do
+        local column = (index - 1) % BUYBACK_COLUMNS
+        local rowIndex = math.floor((index - 1) / BUYBACK_COLUMNS)
+        local row = CreateFrame("Button", nil, frame.root)
+        row:SetSize(BUYBACK_ROW_WIDTH, BUYBACK_ROW_HEIGHT)
+        row:SetPoint(
+            "TOPLEFT",
+            frame.root,
+            "TOPLEFT",
+            7 + (column * (BUYBACK_ROW_WIDTH + BUYBACK_COLUMN_GAP)),
+            -9 - (rowIndex * (BUYBACK_ROW_HEIGHT + BUYBACK_ROW_GAP))
+        )
+        row:RegisterForClicks("LeftButtonDown")
+        row:EnableMouse(false)
+        addSimpleBackdrop(row, 0.72)
+
+        if row.SetBackdropBorderColor then
+            row:SetBackdropBorderColor(0.42, 0.42, 0.42, 0.92)
+        end
+
+        row.iconFrame = CreateFrame("Frame", nil, row)
+        row.iconFrame:SetSize(40, 40)
+        row.iconFrame:SetPoint("LEFT", row, "LEFT", 4, 0)
+        addSimpleBackdrop(row.iconFrame, 0.96)
+
+        row.icon = row.iconFrame:CreateTexture(nil, "ARTWORK")
+        row.icon:SetPoint("TOPLEFT", row.iconFrame, "TOPLEFT", 3, -3)
+        row.icon:SetPoint("BOTTOMRIGHT", row.iconFrame, "BOTTOMRIGHT", -3, 3)
+        row.icon:SetTexture(nil)
+
+        row.countLabel = row.iconFrame:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        row.countLabel:SetPoint("BOTTOMRIGHT", row.iconFrame, "BOTTOMRIGHT", -1, 1)
+        row.countLabel:SetText("")
+
+        row.nameLabel = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.nameLabel:SetPoint("TOPLEFT", row.iconFrame, "TOPRIGHT", 7, -2)
+        row.nameLabel:SetPoint("TOPRIGHT", row, "TOPRIGHT", -6, -4)
+        row.nameLabel:SetHeight(22)
+        row.nameLabel:SetJustifyH("LEFT")
+        row.nameLabel:SetJustifyV("TOP")
+        row.nameLabel:SetText("")
+
+        row.priceLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.priceLabel:SetPoint("BOTTOMLEFT", row.iconFrame, "BOTTOMRIGHT", 7, 3)
+        row.priceLabel:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -6, 3)
+        row.priceLabel:SetJustifyH("LEFT")
+        row.priceLabel:SetText("")
+
+        row:SetScript("OnEnter", function(self)
+            local entry = self.entry
+            if not entry then
+                return
+            end
+
+            if self.SetBackdropBorderColor then
+                self:SetBackdropBorderColor(0.78, 0.67, 0.18, 1.00)
+            end
+
+            if not GameTooltip then
+                return
+            end
+
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            local itemName, itemLink = GetItemInfo(entry.itemId)
+            if itemLink then
+                GameTooltip:SetHyperlink(itemLink)
+            else
+                GameTooltip:SetText(itemName or ("Item " .. tostring(entry.itemId)), 1, 1, 1, true)
+            end
+            GameTooltip:AddLine(
+                MultiBot.L("inventory.buyback.price", "Price") .. ": " ..
+                    formatInventoryBuybackMoney(entry.price),
+                1, 0.82, 0, true
+            )
+            GameTooltip:Show()
+        end)
+
+        row:SetScript("OnLeave", function(self)
+            if self.SetBackdropBorderColor then
+                self:SetBackdropBorderColor(0.42, 0.42, 0.42, 0.92)
+            end
+            if GameTooltip and GameTooltip.Hide then
+                GameTooltip:Hide()
+            end
+        end)
+
+        row:SetScript("OnClick", function(self)
+            local entry = self.entry
+            if not entry or frame.pendingToken then
+                return
+            end
+
+            if not MultiBot.Comm or not MultiBot.Comm.RunInventoryBuyback then
+                frame:setStatus(
+                    MultiBot.L(
+                        "inventory.buyback.unavailable",
+                        "Buyback through the bridge is unavailable."
+                    )
+                )
+                return
+            end
+
+            local token = MultiBot.Comm.RunInventoryBuyback(
+                frame.botName,
+                entry.slot,
+                entry.itemId,
+                entry.count,
+                entry.price
+            )
+            if not token then
+                frame:setStatus(
+                    MultiBot.L(
+                        "inventory.buyback.send_failed",
+                        "The buyback request could not be sent."
+                    )
+                )
+                return
+            end
+
+            frame.pendingToken = token
+            frame:setStatus(MultiBot.L("inventory.buyback.pending", "Buyback requested..."))
+        end)
+
+        frame.rows[index] = row
+        row:Show()
+    end
+
+    function frame:showLoading(botName)
+        self:setBotName(botName)
+        self.pendingToken = nil
+        self:clearItems()
+        self:setStatus(MultiBot.L("inventory.buyback.loading", "Loading buyback..."))
+        self:Show()
+    end
+
+    function frame:render(botName, items)
+        self:setBotName(botName)
+        self.pendingToken = nil
+        self:clearItems()
+
+        local rendered = 0
+        local totalPrice = 0
+        for index, entry in ipairs(items or {}) do
+            if index > BUYBACK_MAX_ITEMS then
+                break
+            end
+
+            local row = self.rows[index]
+            if row and type(entry) == "table" then
+                row.entry = entry
+                row:EnableMouse(true)
+
+                local itemName = GetItemInfo(entry.itemId)
+                local icon = GetItemIcon(entry.itemId)
+
+                row.icon:SetTexture(icon or "Interface\\Icons\\INV_Misc_QuestionMark")
+                row.countLabel:SetText(
+                    (tonumber(entry.count or 1) or 1) > 1 and tostring(entry.count) or ""
+                )
+                row.nameLabel:SetText(itemName or ("Item " .. tostring(entry.itemId)))
+                row.priceLabel:SetText(formatInventoryBuybackMoney(entry.price))
+                row:Show()
+                rendered = rendered + 1
+                totalPrice = totalPrice + math.max(0, tonumber(entry.price or 0) or 0)
+            end
+        end
+
+        if rendered == 0 then
+            self:setStatus(
+                MultiBot.L(
+                    "inventory.buyback.empty",
+                    "No items are available to buy back."
+                )
+            )
+            self.totalLabel:SetText("")
+        else
+            self:setStatus("")
+            self.totalLabel:SetText(formatInventoryBuybackMoney(totalPrice))
+        end
+
+        self:Show()
+    end
+
+    window.frame:HookScript("OnHide", function()
+        frame.pendingToken = nil
+        frame.listToken = nil
+    end)
+
+    frame:clearItems()
+    frame:Hide()
+    MultiBot.inventoryBuybackFrame = frame
+    return frame
+end
+
+function MultiBot.CloseInventoryBuyback()
+    if MultiBot.inventoryBuybackFrame then
+        MultiBot.inventoryBuybackFrame:Hide()
+    end
+end
+
+function MultiBot.OpenBotBuyback(botName)
+    if not botName or botName == "" then
+        return false
+    end
+
+    local frame = ensureInventoryBuybackFrame()
+    frame:showLoading(botName)
+
+    if not MultiBot.Comm or not MultiBot.Comm.IsInventoryBuybackCapable or
+        not MultiBot.Comm.IsInventoryBuybackCapable() then
+        frame:setStatus(
+            MultiBot.L(
+                "inventory.buyback.unavailable",
+                "Buyback through the bridge is unavailable."
+            )
+        )
+        return false
+    end
+
+    local token = MultiBot.Comm.RequestInventoryBuyback(botName)
+    if not token then
+        frame:setStatus(
+            MultiBot.L(
+                "inventory.buyback.send_failed",
+                "The buyback request could not be sent."
+            )
+        )
+        return false
+    end
+
+    frame.listToken = token
+    return true
+end
+
+MultiBot.OnBridgeInventoryBuybackList = function(botName, items, result)
+    local frame = MultiBot.inventoryBuybackFrame
+    if not frame or not frame.IsShown or not frame:IsShown() or frame.botName ~= botName then
+        return
+    end
+
+    frame.listToken = nil
+    local status = result and result.status or "ERR"
+    local reason = result and result.reason or "UNKNOWN"
+    if status == "OK" then
+        frame:render(botName, items or {})
+    else
+        frame:clearItems()
+        frame:setStatus(string.format(
+            MultiBot.L("inventory.buyback.error", "Buyback failed: %s"),
+            getInventoryBuybackReasonText(reason)
+        ))
+    end
+end
+
+MultiBot.OnBridgeInventoryBuybackResult = function(
+    botName,
+    status,
+    reason,
+    _slot,
+    _itemId,
+    _count,
+    _price,
+    command
+)
+    local frame = MultiBot.inventoryBuybackFrame
+    if frame and command and frame.pendingToken == command.token then
+        frame.pendingToken = nil
+    end
+
+    if status == "OK" then
+        if MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then
+            MultiBot.Comm.RequestInventoryExact(botName)
+        end
+
+        if frame and frame.IsShown and frame:IsShown() and frame.botName == botName then
+            MultiBot.OpenBotBuyback(botName)
+        end
+        return
+    end
+
+    if frame and frame.IsShown and frame:IsShown() and frame.botName == botName then
+        frame:setStatus(string.format(
+            MultiBot.L("inventory.buyback.error", "Buyback failed: %s"),
+            getInventoryBuybackReasonText(reason)
+        ))
+    end
+end
+-- MB_VENDOR_BUYBACK_V1_UI_END
+
 local function createInventoryContent(window)
     local content = window.content
     content:SetPoint("TOPLEFT", window.frame, "TOPLEFT", 10, -30)
@@ -1662,6 +2100,7 @@ local function createInventoryContent(window)
         { key = "Open", texture = "inv_misc_gift_05", tip = MultiBot.L("tips.inventory.open") },
         { key = "BankOpen", texture = "inv_misc_bag_10", tip = MultiBot.L("tips.inventory.bank.open", "Open bot bank") },
         { key = "GuildBankOpen", texture = "inv_misc_bag_15", tip = MultiBot.L("tips.inventory.gbank.open", "Open bot guild bank") },
+        { key = "Buyback", texture = "inv_misc_coin_05", tip = MultiBot.L("tips.inventory.buyback", "Buy back recently sold items") },
     }
 
     for index, definition in ipairs(modeButtonDefs) do
@@ -2503,6 +2942,13 @@ function MultiBot.InitializeInventoryFrame()
         local botName = pButton.getName and pButton.getName() or nil
         if MultiBot.OpenBotGuildBank then
             MultiBot.OpenBotGuildBank(botName)
+        end
+    end
+
+    inventory.buttons.Buyback.doLeft = function(pButton)
+        local botName = pButton.getName and pButton.getName() or nil
+        if MultiBot.OpenBotBuyback then
+            MultiBot.OpenBotBuyback(botName)
         end
     end
 

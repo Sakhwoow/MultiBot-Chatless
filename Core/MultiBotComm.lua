@@ -34,11 +34,13 @@ local INVENTORY_ITEM_UNEQUIP_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_DESTROY_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_USE_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_SELL_TIMEOUT_SECONDS = 5.0
+local INVENTORY_BUYBACK_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_MAX_COUNT = 1000
 local INVENTORY_ITEM_EQUIP_MAX_COUNT = 1000
 local INVENTORY_ITEM_DESTROY_MAX_COUNT = 1000
 local INVENTORY_ITEM_USE_MAX_COUNT = 1000
 local INVENTORY_ITEM_SELL_MAX_COUNT = 1000
+local INVENTORY_BUYBACK_MAX_COUNT = 1000
 local ENCHANT_TRADE_MAX_ACTIVE = 8
 local GROUP_ROLL_MAX_ITEM_LINK_LENGTH = 160
 local STATE_TIMEOUT_SECONDS = 5.0
@@ -264,6 +266,7 @@ local function ensureBridgeState()
   state.inventoryItemDestroyCapable = state.inventoryItemDestroyCapable or false
   state.inventoryItemUseCapable = state.inventoryItemUseCapable or false
   state.inventoryItemSellCapable = state.inventoryItemSellCapable or false
+  state.inventoryBuybackCapable = state.inventoryBuybackCapable or false
   state.inventoryBulkSellCapable = state.inventoryBulkSellCapable or false
   state.inventoryOpenCapable = state.inventoryOpenCapable or false
   state.groupRollCapable = state.groupRollCapable or false
@@ -309,6 +312,10 @@ local function ensureBridgeState()
   state.inventoryItemUses = state.inventoryItemUses or {}
   state.inventoryItemSellSeq = state.inventoryItemSellSeq or 0
   state.inventoryItemSells = state.inventoryItemSells or {}
+  state.inventoryBuybackSeq = state.inventoryBuybackSeq or 0
+  state.inventoryBuybackItemSeq = state.inventoryBuybackItemSeq or 0
+  state.inventoryBuybackActive = state.inventoryBuybackActive or nil
+  state.inventoryBuybackCommands = state.inventoryBuybackCommands or {}
   state.bankItems = state.bankItems or {}
   state.bankSeq = state.bankSeq or 0
   state.bankActive = state.bankActive or nil
@@ -2036,6 +2043,132 @@ function Comm.RunInventoryItemSell(name, srcBag, srcSlot, srcItemId, srcCount)
   return token
 end
 -- MB_ITEM_SELL_SINGLE_V1_COMM_END
+-- MB_VENDOR_BUYBACK_V1_COMM_BEGIN
+function Comm.IsInventoryBuybackCapable()
+  local state = ensureBridgeState()
+  return state.connected == true
+    and state.inventoryExactCapable == true
+    and state.inventoryBuybackCapable == true
+end
+
+function Comm.RequestInventoryBuyback(name)
+  local state = ensureBridgeState()
+  name = trim(name)
+
+  if name == "" or not Comm.IsInventoryBuybackCapable() then
+    return false
+  end
+  if type(state.inventoryBuybackActive) == "table" then
+    return false
+  end
+
+  state.inventoryBuybackSeq = (tonumber(state.inventoryBuybackSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-buyback-list-" .. tostring(state.inventoryBuybackSeq)
+  state.inventoryBuybackActive = {
+    token = token,
+    botName = name,
+    botNameKey = string.lower(name),
+    startedAt = safeNow(),
+    begun = false,
+    expectedCount = nil,
+    items = {},
+    seenSlots = {},
+    error = nil,
+  }
+
+  if not Comm.Send("GET", "BUYBACK~" .. name .. "~" .. token) then
+    state.inventoryBuybackActive = nil
+    return false
+  end
+
+  safeDelay(INVENTORY_BUYBACK_TIMEOUT_SECONDS, function()
+    local bridgeState = ensureBridgeState()
+    local active = bridgeState.inventoryBuybackActive
+    if type(active) ~= "table" or active.token ~= token then
+      return
+    end
+
+    bridgeState.inventoryBuybackActive = nil
+    bridgeState.lastError = "BUYBACK_TIMEOUT"
+    if MultiBot.OnBridgeInventoryBuybackList then
+      MultiBot.OnBridgeInventoryBuybackList(active.botName, {}, {
+        token = token,
+        status = "ERR",
+        reason = "TIMEOUT",
+      })
+    end
+  end)
+
+  return token
+end
+
+function Comm.RunInventoryBuyback(name, slot, itemId, count, price)
+  local state = ensureBridgeState()
+  name = trim(name)
+  slot = parseBoundedInteger(tostring(slot or ""), 74, 85)
+  itemId = parseBoundedInteger(tostring(itemId or ""), 1, 4294967295)
+  count = parseBoundedInteger(tostring(count or ""), 1, INVENTORY_BUYBACK_MAX_COUNT)
+  price = parseBoundedInteger(tostring(price or ""), 0, 4294967295)
+
+  if name == "" or not Comm.IsInventoryBuybackCapable() then
+    return false
+  end
+  if slot == nil or itemId == nil or count == nil or price == nil then
+    return false
+  end
+
+  local botNameKey = string.lower(name)
+  for _, pending in pairs(state.inventoryBuybackCommands or {}) do
+    if pending.botNameKey == botNameKey and pending.slot == slot then
+      return false
+    end
+  end
+
+  state.inventoryBuybackItemSeq = (tonumber(state.inventoryBuybackItemSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000)) .. "-buyback-item-" .. tostring(state.inventoryBuybackItemSeq)
+  local command = {
+    token = token,
+    botName = name,
+    botNameKey = botNameKey,
+    slot = slot,
+    itemId = itemId,
+    count = count,
+    price = price,
+    startedAt = safeNow(),
+  }
+  state.inventoryBuybackCommands[token] = command
+
+  local payload = table.concat({
+    "BUYBACK_ITEM", name, token,
+    tostring(slot), tostring(itemId), tostring(count), tostring(price),
+  }, "~")
+
+  if not Comm.Send("RUN", payload) then
+    state.inventoryBuybackCommands[token] = nil
+    return false
+  end
+
+  safeDelay(INVENTORY_BUYBACK_TIMEOUT_SECONDS, function()
+    local bridgeState = ensureBridgeState()
+    local pending = bridgeState.inventoryBuybackCommands and bridgeState.inventoryBuybackCommands[token] or nil
+    if not pending then
+      return
+    end
+
+    bridgeState.inventoryBuybackCommands[token] = nil
+    bridgeState.lastError = "BUYBACK_TIMEOUT"
+    if MultiBot.OnBridgeInventoryBuybackResult then
+      MultiBot.OnBridgeInventoryBuybackResult(
+        pending.botName, "ERR", "TIMEOUT",
+        pending.slot, pending.itemId, pending.count, pending.price, pending
+      )
+    end
+  end)
+
+  return token
+end
+-- MB_VENDOR_BUYBACK_V1_COMM_END
+
 
 function Comm.RequestBank(name)
   local state = ensureBridgeState()
@@ -2560,6 +2693,24 @@ function Comm.MarkDisconnected(reason)
     end
   end
   state.inventoryItemSells = {}
+  if type(state.inventoryBuybackActive) == "table" and MultiBot.OnBridgeInventoryBuybackList then
+    MultiBot.OnBridgeInventoryBuybackList(state.inventoryBuybackActive.botName or "", {}, {
+      token = state.inventoryBuybackActive.token or "",
+      status = "ERR",
+      reason = "DISCONNECTED",
+    })
+  end
+  state.inventoryBuybackActive = nil
+  for _, command in pairs(state.inventoryBuybackCommands or {}) do
+    if MultiBot.OnBridgeInventoryBuybackResult then
+      MultiBot.OnBridgeInventoryBuybackResult(
+        command.botName or "", "ERR", "DISCONNECTED",
+        command.slot or 74, command.itemId or 0, command.count or 0, command.price or 0, command
+      )
+    end
+  end
+  state.inventoryBuybackCommands = {}
+
 
   state.bankActive = nil
   state.guildBankActive = nil
@@ -2619,6 +2770,7 @@ function Comm.MarkDisconnected(reason)
   state.inventoryItemDestroyCapable = false
   state.inventoryItemUseCapable = false
   state.inventoryItemSellCapable = false
+  state.inventoryBuybackCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
@@ -4306,6 +4458,223 @@ local function parseRecipeMaterials(raw)
   return materials
 end
 
+-- MB_VENDOR_BUYBACK_V1_RX_HELPER_BEGIN
+function Comm.HandleInventoryBuybackAddonMessage(opcode, payload, state)
+  if opcode == "BUYBACK_BEGIN" then
+    local fields = splitFields(payload)
+    local active = state.inventoryBuybackActive
+    if #fields ~= 3 then
+      state.lastError = "BUYBACK_BAD_RESPONSE"
+      if type(active) == "table" then active.error = "BAD_RESPONSE" end
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local count = parseBoundedInteger(fields[3], 0, 12)
+    if not botName or not isValidStateToken(token) or count == nil then
+      state.lastError = "BUYBACK_BAD_RESPONSE"
+      if type(active) == "table" then active.error = "BAD_RESPONSE" end
+      return true
+    end
+    if type(active) ~= "table" or active.token ~= token then
+      return true
+    end
+    if string.lower(botName) ~= active.botNameKey then
+      active.error = "RESPONSE_MISMATCH"
+      return true
+    end
+
+    active.begun = true
+    active.expectedCount = count
+    active.items = {}
+    active.seenSlots = {}
+    active.error = nil
+    state.connected = true
+    return true
+  end
+
+  if opcode == "BUYBACK_ITEM" then
+    local fields = splitFields(payload)
+    local active = state.inventoryBuybackActive
+    if #fields ~= 7 then
+      state.lastError = "BUYBACK_BAD_RESPONSE"
+      if type(active) == "table" then active.error = "BAD_RESPONSE" end
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local slot = parseBoundedInteger(fields[3], 74, 85)
+    local itemId = parseBoundedInteger(fields[4], 1, 4294967295)
+    local count = parseBoundedInteger(fields[5], 1, INVENTORY_BUYBACK_MAX_COUNT)
+    local price = parseBoundedInteger(fields[6], 0, 4294967295)
+    local timestamp = parseBoundedInteger(fields[7], 0, 4294967295)
+
+    if not botName or not isValidStateToken(token) or slot == nil or itemId == nil or
+        count == nil or price == nil or timestamp == nil then
+      state.lastError = "BUYBACK_BAD_RESPONSE"
+      if type(active) == "table" then active.error = "BAD_RESPONSE" end
+      return true
+    end
+    if type(active) ~= "table" or active.token ~= token then
+      return true
+    end
+    if not active.begun or string.lower(botName) ~= active.botNameKey then
+      active.error = "RESPONSE_MISMATCH"
+      return true
+    end
+    if active.seenSlots[slot] then
+      active.error = "BAD_RESPONSE"
+      return true
+    end
+
+    active.seenSlots[slot] = true
+    table.insert(active.items, {
+      slot = slot,
+      itemId = itemId,
+      count = count,
+      price = price,
+      timestamp = timestamp,
+    })
+    state.connected = true
+    return true
+  end
+
+  if opcode == "BUYBACK_END" then
+    local fields = splitFields(payload)
+    local active = state.inventoryBuybackActive
+    if #fields ~= 5 then
+      state.lastError = "BUYBACK_BAD_RESPONSE"
+      if type(active) == "table" then
+        state.inventoryBuybackActive = nil
+        if MultiBot.OnBridgeInventoryBuybackList then
+          MultiBot.OnBridgeInventoryBuybackList(active.botName, {}, {
+            token = active.token or "",
+            status = "ERR",
+            reason = "BAD_RESPONSE",
+          })
+        end
+      end
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = urlDecodeFieldStrict(fields[4], 64, false)
+    local count = parseBoundedInteger(fields[5], 0, 12)
+
+    if type(active) ~= "table" or active.token ~= token then
+      return true
+    end
+
+    local valid = botName ~= nil and isValidStateToken(token) and
+      (status == "OK" or status == "ERR") and reason ~= nil and count ~= nil and
+      string.lower(botName) == active.botNameKey
+    local items = active.items or {}
+
+    if valid and status == "OK" then
+      valid = active.begun == true and active.error == nil and
+        active.expectedCount == count and #items == count
+    elseif valid then
+      valid = count == 0
+      items = {}
+    end
+
+    if not valid then
+      status = "ERR"
+      reason = active.error or "RESPONSE_MISMATCH"
+      items = {}
+    end
+
+    table.sort(items, function(left, right)
+      local leftTime = tonumber(left.timestamp or 0) or 0
+      local rightTime = tonumber(right.timestamp or 0) or 0
+      if leftTime == rightTime then
+        return (tonumber(left.slot or 0) or 0) > (tonumber(right.slot or 0) or 0)
+      end
+      return leftTime > rightTime
+    end)
+
+    state.inventoryBuybackActive = nil
+    state.connected = true
+    state.lastError = status == "OK" and nil or ("BUYBACK_" .. tostring(reason or "UNKNOWN"))
+
+    if MultiBot.OnBridgeInventoryBuybackList then
+      MultiBot.OnBridgeInventoryBuybackList(active.botName, items, {
+        token = token,
+        status = status,
+        reason = reason or "UNKNOWN",
+      })
+    end
+    return true
+  end
+
+  if opcode == "BUYBACK_RESULT" then
+    local fields = splitFields(payload)
+    if #fields ~= 8 then
+      state.lastError = "BUYBACK_BAD_RESPONSE"
+      return true
+    end
+
+    local botName = urlDecodeFieldStrict(fields[1], 64, false)
+    local token = trim(fields[2])
+    local status = string.upper(trim(fields[3]))
+    local reason = urlDecodeFieldStrict(fields[4], 64, false)
+    local slot = parseBoundedInteger(fields[5], 74, 85)
+    local itemId = parseBoundedInteger(fields[6], 1, 4294967295)
+    local count = parseBoundedInteger(fields[7], 1, INVENTORY_BUYBACK_MAX_COUNT)
+    local price = parseBoundedInteger(fields[8], 0, 4294967295)
+    local command = state.inventoryBuybackCommands and state.inventoryBuybackCommands[token] or nil
+
+    if not botName or not isValidStateToken(token) or (status ~= "OK" and status ~= "ERR") or
+        not reason or slot == nil or itemId == nil or count == nil or price == nil then
+      state.lastError = "BUYBACK_BAD_RESPONSE"
+      if command then
+        state.inventoryBuybackCommands[token] = nil
+        if MultiBot.OnBridgeInventoryBuybackResult then
+          MultiBot.OnBridgeInventoryBuybackResult(
+            command.botName, "ERR", "BAD_RESPONSE",
+            command.slot, command.itemId, command.count, command.price, command
+          )
+        end
+      end
+      return true
+    end
+    if not command then
+      return true
+    end
+
+    local responseMatches = string.lower(botName) == command.botNameKey and
+      slot == command.slot and itemId == command.itemId and
+      count == command.count and price == command.price
+
+    state.inventoryBuybackCommands[token] = nil
+    if not responseMatches then
+      status = "ERR"
+      reason = "RESPONSE_MISMATCH"
+      state.lastError = "BUYBACK_RESPONSE_MISMATCH"
+    elseif status == "OK" then
+      state.lastError = nil
+    else
+      state.lastError = "BUYBACK_" .. reason
+    end
+
+    if MultiBot.OnBridgeInventoryBuybackResult then
+      MultiBot.OnBridgeInventoryBuybackResult(
+        command.botName, status, reason,
+        command.slot, command.itemId, command.count, command.price, command
+      )
+    end
+
+    debugPrint("ADDON:RX", "BUYBACK_RESULT", botName, token, status, reason, slot, itemId, count, price)
+    return true
+  end
+  return false
+end
+-- MB_VENDOR_BUYBACK_V1_RX_HELPER_END
+
 function Comm.HandleAddonMessage(prefix, message, distribution, sender)
   if prefix ~= Comm.prefix then
     return false
@@ -4375,6 +4744,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.inventoryItemDestroyCapable = false
     state.inventoryItemUseCapable = false
     state.inventoryItemSellCapable = false
+  state.inventoryBuybackCapable = false
     state.inventoryBulkSellCapable = false
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
@@ -4403,6 +4773,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.inventoryItemUseCapable = true
       elseif capability == INVENTORY_ITEM_SELL_CAPABILITY then
         state.inventoryItemSellCapable = true
+      elseif capability == "VENDOR_BUYBACK_V1" then
+        state.inventoryBuybackCapable = true
       elseif capability == INVENTORY_BULK_SELL_CAPABILITY then
         state.inventoryBulkSellCapable = true
       elseif capability == INVENTORY_OPEN_CAPABILITY then
@@ -5346,6 +5718,12 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     return true
   end
   -- MB_ITEM_SELL_SINGLE_V1_RX_END
+  -- MB_VENDOR_BUYBACK_V1_RX_DISPATCH_BEGIN
+  if Comm.HandleInventoryBuybackAddonMessage(opcode, payload, state) then
+    return true
+  end
+  -- MB_VENDOR_BUYBACK_V1_RX_DISPATCH_END
+
 
   if opcode == "INVENTORY_ITEM_USE" then
     local fields = splitFields(payload)
@@ -6451,6 +6829,7 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryItemDestroyCapable = false
   state.inventoryItemUseCapable = false
   state.inventoryItemSellCapable = false
+  state.inventoryBuybackCapable = false
   state.inventoryBulkSellCapable = false
   state.inventoryOpenCapable = false
   state.groupRollCapable = false

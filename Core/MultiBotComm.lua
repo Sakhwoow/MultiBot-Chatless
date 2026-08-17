@@ -5724,7 +5724,13 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       )
     end
 
-    if Comm.RequestInventoryExact then
+    if status == "OK" then
+      local refreshed = MultiBot.RequestInventoryRefresh
+        and MultiBot.RequestInventoryRefresh(command.botName, 0.30)
+      if not refreshed and Comm.RequestInventoryExact then
+        Comm.RequestInventoryExact(command.botName)
+      end
+    elseif Comm.RequestInventoryExact then
       Comm.RequestInventoryExact(command.botName)
     end
 

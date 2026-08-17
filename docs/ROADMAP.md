@@ -1,7 +1,7 @@
 # Multibot Chatless + Bridge — Roadmap de reprise
 
-Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état post-merge du 14 août 2026.
-Dernière mise à jour : 16/08/2026 — `INVENTORY_EXACT_V1`, l'UI inventaire bag-aware, `ITEM_MOVE_V1`, `ITEM_EQUIP_V1` et `ITEM_UNEQUIP_V1` sont implémentés, vérifiés et validés en jeu. Le déplacement reste limité aux piles entières ; l'équipement part d'un emplacement physique exact Backpack/Sac 1..4 et s'appuie sur l'auto-équipement natif AzerothCore ; le déséquipement part d'un slot d'équipement exact et range l'objet via la voie native AzerothCore, avec vérification autoritative de l'objet par GUID. Les deux chemins attendent un résultat structuré avant rafraîchissement et ne produisent pas de whisper/chat parasite en fonctionnement bridge-first normal. Les lectures bulk Jellypowered restent non intégrées, le support multi-préfixes reste différé et les endpoints génériques dangereux restent explicitement rejetés. Dans la reprise sélective Jellypowered, le prochain chantier actif est désormais **ITEM_USE** ; dans la roadmap normale, le prochain chantier reste l'ajout/retrait d'items précis dans les règles de loot.
+Statut : roadmap active issue de l'audit initial v1c du 1er août 2026, resynchronisée avec l'état de stabilisation pré-merge du 17 août 2026.
+Dernière mise à jour : 17/08/2026 — le support multi-préfixes configurable, `INVENTORY_EXACT_V1`, l'UI inventaire bag-aware, `ITEM_MOVE_V1`, `ITEM_EQUIP_V1`, `ITEM_UNEQUIP_V1`, `ITEM_USE_V1`, `ITEM_DESTROY`, `ITEM_SELL_SINGLE_V1` et `VENDOR_BUYBACK_V1` sont validés sur la branche Jellypowered. La stabilisation pré-merge a clos les correctifs CAPS, postconditions ITEM_MOVE/ITEM_USE, autorisation INVENTORY_EXACT, fallback Equip, recyclage de la frame inventaire, sécurité cold-cache, localisation ITEM_USE/Inspect, garde nil Buyback et warning LuaLint `BUYBACK_ROWS`. Les lectures bulk Jellypowered restent différées et les vérifications globales LuaLint/CI restent à exécuter avant merge. Le prochain chantier de la roadmap normale reste l'ajout/retrait d'items précis dans les règles de loot.
 Cette roadmap est la source de vérité active du projet. Les anciens trackers et le fichier `TODO.md` ont été consolidés ici.
 
 ## Baseline auditée
@@ -66,11 +66,11 @@ La branche `Extended` est divergente et ne doit pas être mergée en bloc. Chaqu
 
 ### Fonctions à ajouter ou adapter après audit sémantique ciblé
 
-1. **Support multi-préfixes addon configurables — DIFFÉRÉ**
-   - audit ciblé terminé : `audit-multibot-multiprefix-v1c-2026-08-15-133152.zip` ;
-   - le MultiBot actuel utilise uniquement `MBOT` et aucune autre fonction Extended n'exige le multi-préfixes ;
-   - ne pas modifier le framing/routage stable sans besoin réel : reprendre ce point seulement si un second addon ou namespace doit communiquer avec le Bridge ;
-   - si ce besoin apparaît : `MBOT` reste supporté par défaut, whitelist stricte et bornée côté Bridge, réponse sur le même préfixe que la requête, calcul des 255 octets avec le préfixe réellement utilisé, logs permettant de détecter le cross-talk et aucun préfixe arbitraire accepté.
+1. **Support multi-préfixes addon configurables — TERMINÉ / VALIDÉ**
+   - audit ciblé initial : `audit-multibot-multiprefix-v1c-2026-08-15-133152.zip` ;
+   - `MBOT` reste le préfixe MultiBot par défaut ; l'Addon peut utiliser les préfixes configurés et le Bridge applique une whitelist stricte et bornée ;
+   - le Bridge répond sur le même préfixe que la requête reçue et n'accepte aucun préfixe arbitraire ;
+   - le budget des messages addon reste borné à 255 octets et a été revalidé pendant la stabilisation CAPS.
 
 2. **Inventaire à emplacements exacts, UI bag-aware et déplacement natif — TERMINÉ / VALIDÉ EN JEU**
    - audits ciblés de conception terminés :
@@ -515,10 +515,10 @@ Ces fonctions doivent rester séparées des patches de correction et de sécurit
 
 Critère de sortie : version stabilisée, documentée et reproductible du projet Multibot Chatless + Bridge.
 
-<!-- MULTIBOT_JELLYPOWERED_PROGRESS_SYNC_2026-08-16 -->
+<!-- MULTIBOT_JELLYPOWERED_PROGRESS_SYNC_2026-08-17 -->
 <!-- NORMAL_ROADMAP_NEXT=LOOT_RULE_EXACT_ITEM_ADD_REMOVE -->
 
-## État consolidé Jellypowered / inventaire — 16/08/2026
+## État consolidé Jellypowered / inventaire — 17/08/2026
 
 > **Référence de progression actuelle.** Ce bloc supplante les anciens libellés « prochain chantier Jellypowered » conservés plus haut à titre historique. Il ne modifie pas l'ordre de la roadmap normale après clôture du lot Jellypowered.
 
@@ -533,8 +533,22 @@ Critère de sortie : version stabilisée, documentée et reproductible du projet
 - **Utilisation native d'un item exact** : `ITEM_USE_V1` validé via endpoint spécialisé et chemin natif `HandleUseItemOpcode`, avec revalidation de la source et résultat serveur autoritatif.
 - **Destruction d'un item exact** : `ITEM_DESTROY` validé via endpoint spécialisé.
 - **Vente unitaire exacte** : `ITEM_SELL_SINGLE_V1` validé avec source exacte, vendeur proche revalidé, protections des objets non vendables/protégés, rate limit/replay et absence de mutation optimiste.
+- **Rachat vendeur** : `VENDOR_BUYBACK_V1` validé avec liste structurée, vendeur proche revalidé, exécution via le handler natif de Buyback et rafraîchissements autoritatifs de l'inventaire et de la liste de rachat.
 
 Toutes ces intégrations conservent `mod-playerbots` en **lecture seule stricte** et n'introduisent aucun exécuteur générique de commande Playerbots.
+
+### Stabilisation pré-merge — 17/08/2026
+
+- CAPS : fragmentation/budget wire bornés et corrigés.
+- `ITEM_MOVE_V1` : postcondition de déplacement de pile entière corrigée.
+- `ITEM_USE_V1` : postcondition des objets démarrant une quête corrigée ; le cas négatif « quête déjà acceptée » reste différé faute de cas runtime dédié.
+- `INVENTORY_EXACT_V1` : autorisation explicite côté Bridge corrigée.
+- `ITEM_EQUIP_V1` : fallback chat legacy remis sous le flag explicite de compatibilité.
+- Inventaire : recyclage de la frame et sécurité item/link en cold-cache corrigés ; les cas runtime cold-cache réel et Unequip exact sans cas reproductible restent différés.
+- `ITEM_USE_V1` : namespace locale et raisons d'échec localisées ; tooltip Inspect localisé dans les 8 locales auditées.
+- `VENDOR_BUYBACK_V1` : garde nil de création de frame ajoutée sans changement de protocole.
+- LuaLint : variable inutilisée `BUYBACK_ROWS` supprimée.
+- Les contrôles globaux LuaLint/CI restent une porte de sortie pré-merge et doivent encore être exécutés après cette synchronisation documentaire.
 
 ### Audité et différé / non intégré
 

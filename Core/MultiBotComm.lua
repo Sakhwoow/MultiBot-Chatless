@@ -250,6 +250,7 @@ local function ensureBridgeState()
   state.capabilityFallbackDeadline = tonumber(state.capabilityFallbackDeadline) or 0
   state.capabilityFallbackGeneration = tonumber(state.capabilityFallbackGeneration) or 0
   state.capabilitiesResolved = state.capabilitiesResolved or false
+  state.capabilityBatchActive = state.capabilityBatchActive or false
   state.bootstrapStatePending = state.bootstrapStatePending or false
   state.bootstrapStateRequested = state.bootstrapStateRequested or false
   state.bootstrapStateToken = state.bootstrapStateToken or nil
@@ -779,6 +780,26 @@ maybeResolveCapabilityFallback = function(generation)
       or state.capabilityFallbackDeadline <= 0
       or safeNow() < state.capabilityFallbackDeadline then
     return false
+  end
+
+  if state.capabilityBatchActive then
+    state.capabilityBatchActive = false
+    state.stateFramingCapable = false
+    state.strategyMutationCapable = false
+    state.outfitCapable = false
+    state.inventoryCapable = false
+    state.inventoryExactCapable = false
+    state.inventoryItemMoveCapable = false
+    state.inventoryItemEquipCapable = false
+    state.inventoryItemUnequipCapable = false
+    state.inventoryItemDestroyCapable = false
+    state.inventoryItemUseCapable = false
+    state.inventoryItemSellCapable = false
+    state.inventoryBuybackCapable = false
+    state.inventoryBulkSellCapable = false
+    state.inventoryOpenCapable = false
+    state.groupRollCapable = false
+    state.enchantTradeCapable = false
   end
 
   state.capabilityFallbackDeadline = 0
@@ -4684,7 +4705,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
   local opcode, payload = splitOnce(message or "", "~")
   opcode = string.upper(trim(opcode))
 
-  if opcode ~= "CAPS" then
+  if opcode ~= "CAPS" and opcode ~= "CAPS_BEGIN" and opcode ~= "CAPS_END" then
     maybeResolveCapabilityFallback(state.connectionGeneration)
   end
 
@@ -4697,6 +4718,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.protocol = protocol ~= "" and protocol or nil
     state.server = serverName ~= "" and serverName or nil
     state.lastError = nil
+    state.capabilityBatchActive = false
     debugPrint("ADDON:RX", "HELLO_ACK", payload or "")
     armCapabilityFallback(generation)
 
@@ -4733,22 +4755,49 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     return true
   end
 
-  if opcode == "CAPS" then
+  if opcode == "CAPS_BEGIN" then
     state.stateFramingCapable = false
     state.strategyMutationCapable = false
     state.outfitCapable = false
     state.inventoryCapable = false
     state.inventoryExactCapable = false
+    state.inventoryItemMoveCapable = false
     state.inventoryItemEquipCapable = false
     state.inventoryItemUnequipCapable = false
     state.inventoryItemDestroyCapable = false
     state.inventoryItemUseCapable = false
     state.inventoryItemSellCapable = false
-  state.inventoryBuybackCapable = false
+    state.inventoryBuybackCapable = false
     state.inventoryBulkSellCapable = false
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
     state.enchantTradeCapable = false
+    state.capabilityBatchActive = true
+    state.capabilitiesResolved = false
+    debugPrint("ADDON:RX", "CAPS_BEGIN")
+    return true
+  end
+
+  if opcode == "CAPS" then
+    if not state.capabilityBatchActive then
+      state.stateFramingCapable = false
+      state.strategyMutationCapable = false
+      state.outfitCapable = false
+      state.inventoryCapable = false
+      state.inventoryExactCapable = false
+      state.inventoryItemMoveCapable = false
+      state.inventoryItemEquipCapable = false
+      state.inventoryItemUnequipCapable = false
+      state.inventoryItemDestroyCapable = false
+      state.inventoryItemUseCapable = false
+      state.inventoryItemSellCapable = false
+      state.inventoryBuybackCapable = false
+      state.inventoryBulkSellCapable = false
+      state.inventoryOpenCapable = false
+      state.groupRollCapable = false
+      state.enchantTradeCapable = false
+    end
+
     for capability in string.gmatch(payload or "", "([^,]+)") do
       capability = trim(capability)
       if capability == STATE_FRAMING_CAPABILITY then
@@ -4785,6 +4834,12 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.enchantTradeCapable = true
       end
     end
+
+    if state.capabilityBatchActive then
+      debugPrint("ADDON:RX", "CAPS_PART", payload or "")
+      return true
+    end
+
     state.capabilityFallbackDeadline = 0
     state.capabilityFallbackGeneration = 0
     state.capabilitiesResolved = true
@@ -4796,6 +4851,22 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     return true
   end
 
+  if opcode == "CAPS_END" then
+    if not state.capabilityBatchActive then
+      return true
+    end
+
+    state.capabilityBatchActive = false
+    state.capabilityFallbackDeadline = 0
+    state.capabilityFallbackGeneration = 0
+    state.capabilitiesResolved = true
+    debugPrint("ADDON:RX", "CAPS_END")
+    flushPendingStateRefreshes()
+    if MultiBot.RefreshEnchantingEveryButtons then
+      MultiBot.RefreshEnchantingEveryButtons()
+    end
+    return true
+  end
   if opcode == "WEAPON_ENCHANT" then
     state.connected = true
 

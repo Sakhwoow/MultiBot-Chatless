@@ -304,12 +304,22 @@ local function buildInventoryDestroyRequest(button, botName)
     return request
 end
 
+local function isInventoryItemHyperlink(value)
+    return type(value) == "string"
+        and string.sub(value, 1, 1) == "|"
+        and string.find(value, "|Hitem:", 1, true) ~= nil
+end
+
 local function runLegacyInventoryItemDestroy(request)
     if MultiBot.allowLegacyChatFallback ~= true or type(request) ~= "table" then
         return false
     end
 
     if not request.botName or request.botName == "" or not request.tip or request.tip == "" then
+        return false
+    end
+
+    if request.exactLocation == true and not isInventoryItemHyperlink(request.tip) then
         return false
     end
 
@@ -408,6 +418,10 @@ local function sendInventoryItemCommand(command, button, botName, options)
     options = options or {}
 
     if not command or command == "" or not button or not botName or botName == "" then
+        return false
+    end
+
+    if button.item and button.item.exactLocation == true and not isInventoryItemHyperlink(button.tip) then
         return false
     end
 
@@ -640,7 +654,9 @@ local function handleInventoryItemClick(button)
             return
         end
 
-        sendInventoryItemCommand(action, button, botName)
+        if MultiBot.allowLegacyChatFallback == true then
+            sendInventoryItemCommand(action, button, botName)
+        end
         return
     end
 
@@ -698,7 +714,7 @@ local function handleInventoryItemClick(button)
                 return
             end
 
-            addInventorySystemMessage(inventoryItemL(
+            addInventorySystemMessage(MultiBot.L(
                 "inventory.item_use.send_failed",
                 "The item-use request could not be sent."
             ))
@@ -714,7 +730,7 @@ local function handleInventoryItemClick(button)
                 followupRefreshDelay = 1.20,
             })
         else
-            addInventorySystemMessage(inventoryItemL(
+            addInventorySystemMessage(MultiBot.L(
                 "inventory.item_use.unavailable",
                 "Item use via the bridge is unavailable."
             ))
@@ -796,6 +812,12 @@ function MultiBot.OnBridgeInventoryItemSellResult(botName, result, reason)
 end
 -- MB_ITEM_SELL_SINGLE_V1_CALLBACK_END
 
+local function getInventoryItemUseReason(reason)
+    local code = tostring(reason or "UNKNOWN")
+    local fallback = MultiBot.L("inventory.item_use.reason.UNKNOWN", "Unknown item-use error.")
+    return MultiBot.L("inventory.item_use.reason." .. code, fallback)
+end
+
 function MultiBot.OnBridgeInventoryItemUseResult(botName, result, reason)
     if reason == "DISCONNECTED" then
         return
@@ -807,8 +829,8 @@ function MultiBot.OnBridgeInventoryItemUseResult(botName, result, reason)
     end
 
     addInventorySystemMessage(string.format(
-        inventoryItemL("inventory.item_use.err", "Use failed: %s"),
-        tostring(reason or "UNKNOWN")
+        MultiBot.L("inventory.item_use.err", "Use failed: %s"),
+        getInventoryItemUseReason(reason)
     ))
 
     if reason == "SOURCE_STALE" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" then
@@ -934,7 +956,7 @@ local function cloneInventoryExactItem(sourceItem, location)
     item.icon = item.icon or GetItemIcon(numericItemId)
     item.name = item.name or itemName or ("Item " .. itemId)
     item.link = item.link or itemLink or item.name
-    item.rare = item.rare or itemRare or 1
+    item.rare = item.rare or resolveInventoryItemRarity(itemRare)
     item.classID = item.classID or itemClassID
     item.type = item.type or itemType
 
@@ -984,9 +1006,7 @@ MultiBot.InventoryAddExactItem = function(frame, sourceItem, location, layoutInd
     if inventory and inventory.configureExactItemButton then
         inventory:configureExactItemButton(button, item)
     end
-    if type(item.link) == "string" and string.sub(item.link, 1, 1) == "|" then
-        button.doLeft = handleInventoryItemClick
-    end
+    button.doLeft = handleInventoryItemClick
 
     if item.count then
         button.setAmount(item.count)

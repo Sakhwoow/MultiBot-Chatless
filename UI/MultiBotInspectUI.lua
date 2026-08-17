@@ -163,7 +163,7 @@ local function showRightClickHint(self)
     local botName = getInspectedBotName()
     if canUnequipInspectedBot(botName) then
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Clic droit : déséquiper", 1, 0.82, 0)
+        GameTooltip:AddLine(MultiBot.L("inventory.inspect.unequip.tooltip", "Right-click: unequip"), 1, 0.82, 0)
         GameTooltip:Show()
     end
 end

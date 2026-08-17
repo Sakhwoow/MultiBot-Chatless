@@ -455,6 +455,8 @@ local function makeItemsContainer(parent, scrollChild)
         host = parent,
         child = scrollChild,
         buttons = {},
+        itemButtonPool = {},
+        emptySlotButtonPool = {},
         index = 0,
         iconSize = INVENTORY_WINDOW_DEFAULTS.itemSize,
         spacingX = INVENTORY_WINDOW_DEFAULTS.itemSpacingX,
@@ -579,12 +581,182 @@ local function makeItemsContainer(parent, scrollChild)
         return MultiBot.InventoryAddItem(self, itemInfo)
     end
 
+    function items:createItemButton()
+        local button = CreateFrame("Button", nil, self.child)
+        button.__mbInventoryButtonKind = "ITEM"
+        button:SetSize(self.iconSize, self.iconSize)
+        if button.SetFrameLevel and self.child and self.child.GetFrameLevel then
+            button:SetFrameLevel((self.child:GetFrameLevel() or 0) + 2)
+        end
+        button:RegisterForClicks("LeftButtonDown", "RightButtonDown")
+        button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        button:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+
+        button.icon = button:CreateTexture(nil, "ARTWORK")
+        button.icon:SetAllPoints(button)
+
+        button.border = button:CreateTexture(nil, "OVERLAY")
+        button.border:SetTexture("Interface\\AddOns\\MultiBot\\Icons\\border.blp")
+        button.border:SetPoint("TOPLEFT", button, "TOPLEFT", -2, 2)
+        button.border:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 2, -2)
+
+        function button.setAmount(pAmount)
+            if not button.amount then
+                button.amount = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+                button.amount:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 1, 1)
+            end
+            button.amount:SetText(pAmount)
+            button.amount:Show()
+            return button
+        end
+
+        function button.getButton(_, index)
+            return button.parent and button.parent.getButton and button.parent.getButton(index) or nil
+        end
+
+        function button.getName()
+            return items:getName()
+        end
+
+        button:SetScript("OnEnter", function(self)
+            if not self.tip or not GameTooltip then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if type(self.tip) == "string" and string.sub(self.tip, 1, 1) == "|" then
+                GameTooltip:SetHyperlink(self.tip)
+            else
+                GameTooltip:SetText(self.tip, 1, 1, 1, true)
+            end
+            GameTooltip:Show()
+        end)
+
+        button:SetScript("OnLeave", function()
+            if GameTooltip and GameTooltip.Hide then
+                GameTooltip:Hide()
+            end
+        end)
+
+        button:SetScript("OnClick", function(self, mouseButton)
+            if mouseButton == "LeftButton" and self.__mbSuppressNextLeftClick then
+                return
+            end
+
+            if mouseButton == "LeftButton" and self.doLeft then
+                self.doLeft(self)
+                return
+            end
+
+            if mouseButton == "RightButton" and self.doRight then
+                self.doRight(self)
+            end
+        end)
+
+        return button
+    end
+
+    function items:createEmptySlotButton()
+        local button = CreateFrame("Button", nil, self.child)
+        button.__mbInventoryButtonKind = "EMPTY"
+        button:SetSize(self.iconSize, self.iconSize)
+        if button.SetFrameLevel and self.child and self.child.GetFrameLevel then
+            button:SetFrameLevel((self.child:GetFrameLevel() or 0) + 2)
+        end
+        button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        addSimpleBackdrop(button, 0.42)
+        return button
+    end
+
+    function items:releaseButton(button)
+        if not button then
+            return
+        end
+
+        button:Hide()
+        button:EnableMouse(false)
+        button:SetScript("OnDragStart", nil)
+        button:SetScript("OnDragStop", nil)
+        if button.ClearAllPoints then
+            button:ClearAllPoints()
+        end
+        if button.SetAlpha then
+            button:SetAlpha(1.0)
+        end
+        if button.amount then
+            button.amount:SetText("")
+            button.amount:Hide()
+        end
+
+        button.parent = nil
+        button.name = nil
+        button.tip = nil
+        button.texture = nil
+        button.item = nil
+        button.emptySlot = nil
+        button.layoutIndex = nil
+        button.x = nil
+        button.y = nil
+        button.doLeft = nil
+        button.doRight = nil
+        button.__mbExactSlot = nil
+        button.__mbVisualGroupKey = nil
+        button.__mbVisualGroupIndex = nil
+        button.__mbSuppressNextLeftClick = nil
+
+        if button.__mbInventoryButtonKind == "ITEM" then
+            table.insert(self.itemButtonPool, button)
+        elseif button.__mbInventoryButtonKind == "EMPTY" then
+            table.insert(self.emptySlotButtonPool, button)
+        end
+    end
+
+    function items:acquireItemButton()
+        local button = table.remove(self.itemButtonPool)
+        if not button then
+            button = self:createItemButton()
+        end
+
+        button.__mbInventoryButtonKind = "ITEM"
+        button.parent = self
+        button:SetSize(self.iconSize, self.iconSize)
+        button:RegisterForClicks("LeftButtonDown", "RightButtonDown")
+        button:EnableMouse(true)
+        button:SetScript("OnDragStart", nil)
+        button:SetScript("OnDragStop", nil)
+        if button.SetAlpha then
+            button:SetAlpha(1.0)
+        end
+        if button.amount then
+            button.amount:SetText("")
+            button.amount:Hide()
+        end
+        if button.icon and button.icon.Show then
+            button.icon:Show()
+        end
+        if button.border and button.border.Show then
+            button.border:Show()
+        end
+        return button
+    end
+
+    function items:acquireEmptySlotButton()
+        local button = table.remove(self.emptySlotButtonPool)
+        if not button then
+            button = self:createEmptySlotButton()
+        end
+
+        button.__mbInventoryButtonKind = "EMPTY"
+        button:SetSize(self.iconSize, self.iconSize)
+        button:SetScript("OnDragStart", nil)
+        button:SetScript("OnDragStop", nil)
+        if button.SetAlpha then
+            button:SetAlpha(1.0)
+        end
+        return button
+    end
+
     function items:clear()
         self:clearVisualGroups()
         for key, button in pairs(self.buttons) do
-            if button and button.Hide then
-                button:Hide()
-            end
+            self:releaseButton(button)
             self.buttons[key] = nil
         end
         self.index = 0
@@ -706,83 +878,25 @@ local function makeItemsContainer(parent, scrollChild)
     end
 
     function items.addButton(pName, pX, pY, pTexture, pTip, pLayoutIndex)
-        local button = CreateFrame("Button", nil, items.child)
-        button:SetSize(items.iconSize, items.iconSize)
+        local button = items:acquireItemButton()
+        local safeTexture = MultiBot.SafeTexturePath(pTexture)
+
+        button:ClearAllPoints()
         button:SetPoint("TOPLEFT", items.child, "TOPLEFT", pX, pY)
         if button.SetFrameLevel and items.child and items.child.GetFrameLevel then
             button:SetFrameLevel((items.child:GetFrameLevel() or 0) + 2)
         end
-        button:RegisterForClicks("LeftButtonDown", "RightButtonDown")
-        button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        button:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
-
-        button.icon = button:CreateTexture(nil, "ARTWORK")
-        button.icon:SetAllPoints(button)
-        button.icon:SetTexture(MultiBot.SafeTexturePath(pTexture))
-
-        button.border = button:CreateTexture(nil, "OVERLAY")
-        button.border:SetTexture("Interface\\AddOns\\MultiBot\\Icons\\border.blp")
-        button.border:SetPoint("TOPLEFT", button, "TOPLEFT", -2, 2)
-        button.border:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 2, -2)
+        button.icon:SetTexture(safeTexture)
 
         button.parent = items
         button.name = pName
         button.tip = pTip
-        button.texture = MultiBot.SafeTexturePath(pTexture)
+        button.texture = safeTexture
         button.size = items.iconSize
         button.layoutIndex = math.max(0, tonumber(pLayoutIndex or items.index or 0) or 0)
         button.x = pX
         button.y = pY
-
-        function button.setAmount(pAmount)
-            if button.amount and button.amount.Hide then
-                button.amount:Hide()
-            end
-            button.amount = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-            button.amount:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 1, 1)
-            button.amount:SetText(pAmount)
-            return button
-        end
-
-        function button.getButton(_, index)
-            return button.parent and button.parent.getButton and button.parent.getButton(index) or nil
-        end
-
-        function button.getName()
-            return items:getName()
-        end
-
-        button:SetScript("OnEnter", function(self)
-            if not self.tip or not GameTooltip then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if type(self.tip) == "string" and string.sub(self.tip, 1, 1) == "|" then
-                GameTooltip:SetHyperlink(self.tip)
-            else
-                GameTooltip:SetText(self.tip, 1, 1, 1, true)
-            end
-            GameTooltip:Show()
-        end)
-
-        button:SetScript("OnLeave", function()
-            if GameTooltip and GameTooltip.Hide then
-                GameTooltip:Hide()
-            end
-        end)
-
-        button:SetScript("OnClick", function(self, mouseButton)
-            if mouseButton == "LeftButton" and self.__mbSuppressNextLeftClick then
-                return
-            end
-
-            if mouseButton == "LeftButton" and self.doLeft then
-                self.doLeft(self)
-                return
-            end
-
-            if mouseButton == "RightButton" and self.doRight then
-                self.doRight(self)
-            end
-        end)
+        button:Show()
 
         items.buttons[pName] = button
         if not items.suspendLayout then
@@ -795,8 +909,9 @@ local function makeItemsContainer(parent, scrollChild)
         local index = math.max(0, tonumber(layoutIndex or 0) or 0)
         local key = slotKey or ("Empty_" .. tostring(index))
         local posX, posY = self:getSlotPosition(index)
-        local button = CreateFrame("Button", nil, self.child)
-        button:SetSize(self.iconSize, self.iconSize)
+        local button = self:acquireEmptySlotButton()
+
+        button:ClearAllPoints()
         button:SetPoint("TOPLEFT", self.child, "TOPLEFT", posX, posY)
         if button.SetFrameLevel and self.child and self.child.GetFrameLevel then
             button:SetFrameLevel((self.child:GetFrameLevel() or 0) + 2)
@@ -810,10 +925,7 @@ local function makeItemsContainer(parent, scrollChild)
         local moveCapable = exactSlot and MultiBot.Comm and MultiBot.Comm.IsInventoryItemMoveCapable and
             MultiBot.Comm.IsInventoryItemMoveCapable()
         button:EnableMouse(moveCapable and true or false)
-        if moveCapable then
-            button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        end
-        addSimpleBackdrop(button, 0.42)
+        button:Show()
 
         self.buttons[key] = button
         if not self.suspendLayout then
@@ -1591,7 +1703,6 @@ end
 -- MB_VENDOR_BUYBACK_V1_UI_BEGIN
 local BUYBACK_MAX_ITEMS = 12
 local BUYBACK_COLUMNS = 2
-local BUYBACK_ROWS = 6
 local BUYBACK_ROW_WIDTH = 238
 local BUYBACK_ROW_HEIGHT = 48
 local BUYBACK_COLUMN_GAP = 10
@@ -1935,6 +2046,10 @@ function MultiBot.OpenBotBuyback(botName)
     end
 
     local frame = ensureInventoryBuybackFrame()
+    if not frame then
+        return false
+    end
+
     frame:showLoading(botName)
 
     if not MultiBot.Comm or not MultiBot.Comm.IsInventoryBuybackCapable or

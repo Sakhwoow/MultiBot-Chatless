@@ -5185,10 +5185,16 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
     local active = getActiveInventoryExactRequest(botName, token)
     if active then
-      active.begun = true
-      active.bags = {}
-      active.items = {}
-      active.itemsByPosition = {}
+      if active.begun then
+        active.integrityError = "DUPLICATE_BEGIN"
+        state.lastError = "INV_EXACT_DUPLICATE_BEGIN"
+      else
+        active.begun = true
+        active.integrityError = nil
+        active.bags = {}
+        active.items = {}
+        active.itemsByPosition = {}
+      end
     end
 
     return true
@@ -5200,6 +5206,10 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.lastError = nil
 
     if #fields ~= 7 then
+      local active = #fields >= 2 and getActiveInventoryExactRequest(trim(fields[1]), trim(fields[2])) or nil
+      if active then
+        active.integrityError = "INV_BAG_BAD_FIELD_COUNT"
+      end
       state.lastError = "INV_BAG_BAD_FIELD_COUNT"
       return true
     end
@@ -5216,9 +5226,15 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     if not active then
       return true
     end
+    if not active.begun then
+      active.integrityError = "FRAME_BEFORE_BEGIN"
+      state.lastError = "INV_BAG_BEFORE_BEGIN"
+      return true
+    end
 
     if (kind ~= "BACKPACK" and kind ~= "BAG" and kind ~= "KEYRING")
         or bag == nil or slotStart == nil or slotCount == nil or bagItemId == nil then
+      active.integrityError = "INV_BAG_BAD_FIELDS"
       state.lastError = "INV_BAG_BAD_FIELDS"
       return true
     end
@@ -5240,6 +5256,10 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.lastError = nil
 
     if #fields ~= 7 then
+      local active = #fields >= 2 and getActiveInventoryExactRequest(trim(fields[1]), trim(fields[2])) or nil
+      if active then
+        active.integrityError = "INV_ITEM_LOC_BAD_FIELD_COUNT"
+      end
       state.lastError = "INV_ITEM_LOC_BAD_FIELD_COUNT"
       return true
     end
@@ -5256,9 +5276,22 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     if not active then
       return true
     end
+    if not active.begun then
+      active.integrityError = "FRAME_BEFORE_BEGIN"
+      state.lastError = "INV_ITEM_LOC_BEFORE_BEGIN"
+      return true
+    end
 
     if bag == nil or slot == nil or itemId == nil or count == nil or (soulbound ~= "0" and soulbound ~= "1") then
+      active.integrityError = "INV_ITEM_LOC_BAD_FIELDS"
       state.lastError = "INV_ITEM_LOC_BAD_FIELDS"
+      return true
+    end
+
+    local positionKey = tostring(bag) .. ":" .. tostring(slot)
+    if active.itemsByPosition[positionKey] then
+      active.integrityError = "DUPLICATE_ITEM_POSITION"
+      state.lastError = "INV_ITEM_LOC_DUPLICATE_POSITION"
       return true
     end
 
@@ -5270,17 +5303,35 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       soulbound = soulbound == "1",
     }
     table.insert(active.items, item)
-    active.itemsByPosition[tostring(bag) .. ":" .. tostring(slot)] = item
+    active.itemsByPosition[positionKey] = item
+    return true
+  end
+
+  if opcode == "INV_EXACT_ERROR" then
+    local botName, rest = splitOnce(payload or "", "~")
+    local token, reason = splitOnce(rest or "", "~")
+    state.connected = true
+
+    local active = getActiveInventoryExactRequest(botName, token)
+    if active then
+      if not active.begun then
+        active.integrityError = "FRAME_BEFORE_BEGIN"
+        state.lastError = "INV_EXACT_ERROR_BEFORE_BEGIN"
+      else
+        reason = trim(reason)
+        active.integrityError = reason ~= "" and reason or "FAILED"
+        state.lastError = "INV_EXACT_" .. active.integrityError
+      end
+    end
     return true
   end
 
   if opcode == "INV_EXACT_END" then
     local botName, token = splitOnce(payload or "", "~")
     state.connected = true
-    state.lastError = nil
 
     local active = getActiveInventoryExactRequest(botName, token)
-    if active then
+    if active and active.begun and not active.integrityError then
       local snapshot = {
         botName = active.botName,
         token = active.token,
@@ -5290,10 +5341,13 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         itemsByPosition = active.itemsByPosition or {},
       }
       state.inventoryExactSnapshots[active.botNameKey] = snapshot
+      state.lastError = nil
 
       if MultiBot.OnBridgeInventoryExactSnapshot then
         MultiBot.OnBridgeInventoryExactSnapshot(active.botName, snapshot)
       end
+    elseif active then
+      state.lastError = "INV_EXACT_" .. tostring(active.integrityError or "INCOMPLETE")
     end
 
     clearActiveInventoryExactRequest(botName, token)
@@ -5632,6 +5686,12 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       state.lastError = "ITEM_EQUIP_BAD_RESPONSE"
       if command then
         state.inventoryItemEquips[token] = nil
+        if MultiBot.OnBridgeInventoryItemEquipResult then
+          MultiBot.OnBridgeInventoryItemEquipResult(
+            command.botName, "ERR", "BAD_RESPONSE",
+            command.srcBag, command.srcSlot, command.dstSlot, command
+          )
+        end
         if Comm.RequestInventoryExact then
           Comm.RequestInventoryExact(command.botName)
         end
@@ -5644,7 +5704,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     end
 
     local responseMatches = string.lower(botName) == command.botNameKey and
-      srcBag == command.srcBag and srcSlot == command.srcSlot
+      srcBag == command.srcBag and srcSlot == command.srcSlot and dstSlot == command.dstSlot
 
     state.inventoryItemEquips[token] = nil
     if not responseMatches then
@@ -5655,6 +5715,13 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       state.lastError = nil
     else
       state.lastError = "ITEM_EQUIP_" .. reason
+    end
+
+    if MultiBot.OnBridgeInventoryItemEquipResult then
+      MultiBot.OnBridgeInventoryItemEquipResult(
+        command.botName, status, reason,
+        command.srcBag, command.srcSlot, command.dstSlot, command
+      )
     end
 
     if Comm.RequestInventoryExact then

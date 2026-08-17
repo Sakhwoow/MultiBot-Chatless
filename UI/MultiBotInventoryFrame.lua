@@ -618,13 +618,13 @@ local function makeItemsContainer(parent, scrollChild)
             return items:getName()
         end
 
-        button:SetScript("OnEnter", function(self)
-            if not self.tip or not GameTooltip then return end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            if type(self.tip) == "string" and string.sub(self.tip, 1, 1) == "|" then
-                GameTooltip:SetHyperlink(self.tip)
+        button:SetScript("OnEnter", function(widget)
+            if not widget.tip or not GameTooltip then return end
+            GameTooltip:SetOwner(widget, "ANCHOR_RIGHT")
+            if type(widget.tip) == "string" and string.sub(widget.tip, 1, 1) == "|" then
+                GameTooltip:SetHyperlink(widget.tip)
             else
-                GameTooltip:SetText(self.tip, 1, 1, 1, true)
+                GameTooltip:SetText(widget.tip, 1, 1, 1, true)
             end
             GameTooltip:Show()
         end)
@@ -635,18 +635,18 @@ local function makeItemsContainer(parent, scrollChild)
             end
         end)
 
-        button:SetScript("OnClick", function(self, mouseButton)
-            if mouseButton == "LeftButton" and self.__mbSuppressNextLeftClick then
+        button:SetScript("OnClick", function(widget, mouseButton)
+            if mouseButton == "LeftButton" and widget.__mbSuppressNextLeftClick then
                 return
             end
 
-            if mouseButton == "LeftButton" and self.doLeft then
-                self.doLeft(self)
+            if mouseButton == "LeftButton" and widget.doLeft then
+                widget.doLeft(widget)
                 return
             end
 
-            if mouseButton == "RightButton" and self.doRight then
-                self.doRight(self)
+            if mouseButton == "RightButton" and widget.doRight then
+                widget.doRight(widget)
             end
         end)
 
@@ -2114,7 +2114,9 @@ MultiBot.OnBridgeInventoryBuybackResult = function(
     end
 
     if status == "OK" then
-        if MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then
+        local refreshed = MultiBot.RequestInventoryRefresh
+            and MultiBot.RequestInventoryRefresh(botName, 0.30)
+        if not refreshed and MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then
             MultiBot.Comm.RequestInventoryExact(botName)
         end
 

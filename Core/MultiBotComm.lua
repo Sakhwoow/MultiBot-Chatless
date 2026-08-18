@@ -1614,6 +1614,13 @@ local function finishSelfBotRequest(kind, token, result)
   result.token = token
   result.kind = kind
 
+  -- Recovery state requests must never promote a cached/local fallback value
+  -- to authoritative UI state. Only a successfully parsed server response may
+  -- carry active through such a request.
+  if pending.authoritativeOnly == true and result.authoritative ~= true then
+    result.active = nil
+  end
+
   if type(result.active) == "boolean" then
     state.selfBotLastActive = result.active
   end
@@ -1687,6 +1694,7 @@ function Comm.HandleSelfBotAddonMessage(opcode, payload, state)
   finishSelfBotRequest(kind, token, {
     status = status == "OK" and "ok" or "error",
     active = activeText == "1",
+    authoritative = true,
     reason = reason,
     desiredState = type(pending) == "table" and pending.desiredState or nil,
   })
@@ -1726,15 +1734,24 @@ function Comm.IsSelfBotCapable()
   return state.connected == true and state.selfBotCapable == true
 end
 
-function Comm.RequestSelfBotState(callback)
+local function requestSelfBotState(callback, options)
   local state = ensureBridgeState()
+  options = type(options) == "table" and options or {}
+  local allowDuringCommand = options.allowDuringCommand == true
+  local authoritativeOnly = options.authoritativeOnly == true
+
   if not state.connected or state.selfBotCapable ~= true then
     return false
   end
-  if type(state.selfBotCommandActive) == "table" then
+  if type(state.selfBotCommandActive) == "table" and not allowDuringCommand then
     return false
   end
   if type(state.selfBotStateActive) == "table" then
+    -- A recovery caller requires its own completion callback. Do not silently
+    -- attach it to an unrelated state request.
+    if authoritativeOnly then
+      return false
+    end
     return state.selfBotStateActive.token
   end
 
@@ -1744,6 +1761,7 @@ function Comm.RequestSelfBotState(callback)
   state.selfBotStateActive = {
     token = token,
     callback = type(callback) == "function" and callback or nil,
+    authoritativeOnly = authoritativeOnly,
     startedAt = safeNow(),
   }
 
@@ -1770,6 +1788,10 @@ function Comm.RequestSelfBotState(callback)
   end
 
   return token
+end
+
+function Comm.RequestSelfBotState(callback)
+  return requestSelfBotState(callback, nil)
 end
 
 function Comm.RunSelfBot(desiredState, callback)
@@ -1819,12 +1841,34 @@ function Comm.RunSelfBot(desiredState, callback)
         return
       end
 
-      finishSelfBotRequest("command", token, {
-        status = "timeout",
-        active = type(bridge.selfBotLastActive) == "boolean" and bridge.selfBotLastActive or nil,
-        reason = "TIMEOUT",
-        desiredState = pending.desiredState,
+      local desiredAtTimeout = pending.desiredState
+      local recoveryToken = requestSelfBotState(function(stateResult)
+        local current = ensureBridgeState().selfBotCommandActive
+        if type(current) ~= "table" or current.token ~= token then
+          return
+        end
+
+        finishSelfBotRequest("command", token, {
+          status = "timeout",
+          active = type(stateResult) == "table"
+              and type(stateResult.active) == "boolean"
+              and stateResult.active
+              or nil,
+          reason = "TIMEOUT",
+          desiredState = current.desiredState,
+        })
+      end, {
+        allowDuringCommand = true,
+        authoritativeOnly = true,
       })
+
+      if not recoveryToken then
+        finishSelfBotRequest("command", token, {
+          status = "timeout",
+          reason = "TIMEOUT_STATE_REFRESH_FAILED",
+          desiredState = desiredAtTimeout,
+        })
+      end
     end)
   end
 

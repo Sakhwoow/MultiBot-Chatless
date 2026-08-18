@@ -5708,7 +5708,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     end
 
     local responseMatches = string.lower(botName) == command.botNameKey and
-      srcBag == command.srcBag and srcSlot == command.srcSlot and dstSlot == command.dstSlot
+      srcBag == command.srcBag and srcSlot == command.srcSlot
 
     state.inventoryItemEquips[token] = nil
     if not responseMatches then
@@ -5724,7 +5724,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     if MultiBot.OnBridgeInventoryItemEquipResult then
       MultiBot.OnBridgeInventoryItemEquipResult(
         command.botName, status, reason,
-        command.srcBag, command.srcSlot, command.dstSlot, command
+        command.srcBag, command.srcSlot, dstSlot, command
       )
     end
 

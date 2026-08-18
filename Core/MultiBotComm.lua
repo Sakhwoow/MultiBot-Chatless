@@ -4718,7 +4718,6 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.protocol = protocol ~= "" and protocol or nil
     state.server = serverName ~= "" and serverName or nil
     state.lastError = nil
-    state.capabilityBatchActive = false
     debugPrint("ADDON:RX", "HELLO_ACK", payload or "")
     armCapabilityFallback(generation)
 

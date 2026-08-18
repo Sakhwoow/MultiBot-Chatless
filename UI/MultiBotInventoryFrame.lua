@@ -3107,9 +3107,13 @@ MultiBot.OnBridgeInventoryItemMoveResult = function(botName, status, reason, src
     if not inventory.IsVisible or not inventory:IsVisible() or botName ~= inventory.name then
         return
     end
-    if not MultiBot.Comm or not MultiBot.Comm.RequestInventoryExact then
-        return
+    if status == "OK" then
+        local refreshed = MultiBot.RequestInventoryRefresh
+            and MultiBot.RequestInventoryRefresh(botName, 0.30)
+        if not refreshed and MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then
+            MultiBot.Comm.RequestInventoryExact(botName)
+        end
+    elseif MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then
+        MultiBot.Comm.RequestInventoryExact(botName)
     end
-
-    MultiBot.Comm.RequestInventoryExact(botName)
 end

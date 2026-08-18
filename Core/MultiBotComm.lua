@@ -1753,19 +1753,21 @@ function Comm.RequestSelfBotState(callback)
     return false
   end
 
-  safeDelay(SELF_BOT_TIMEOUT_SECONDS, function()
-    local bridge = ensureBridgeState()
-    local pending = bridge.selfBotStateActive
-    if type(pending) ~= "table" or pending.token ~= token then
-      return
-    end
+  if MultiBot and type(MultiBot.TimerAfter) == "function" then
+    MultiBot.TimerAfter(SELF_BOT_TIMEOUT_SECONDS, function()
+      local bridge = ensureBridgeState()
+      local pending = bridge.selfBotStateActive
+      if type(pending) ~= "table" or pending.token ~= token then
+        return
+      end
 
-    finishSelfBotRequest("state", token, {
-      status = "timeout",
-      active = type(bridge.selfBotLastActive) == "boolean" and bridge.selfBotLastActive or nil,
-      reason = "TIMEOUT",
-    })
-  end)
+      finishSelfBotRequest("state", token, {
+        status = "timeout",
+        active = type(bridge.selfBotLastActive) == "boolean" and bridge.selfBotLastActive or nil,
+        reason = "TIMEOUT",
+      })
+    end)
+  end
 
   return token
 end
@@ -1785,7 +1787,13 @@ function Comm.RunSelfBot(desiredState, callback)
   end
 
   -- A state response created before this mutation is stale by definition.
-  state.selfBotStateActive = nil
+  local staleState = state.selfBotStateActive
+  if type(staleState) == "table" then
+    finishSelfBotRequest("state", staleState.token, {
+      status = "error",
+      reason = "SUPERSEDED",
+    })
+  end
 
   state.selfBotCommandSeq = (tonumber(state.selfBotCommandSeq) or 0) + 1
   local token = tostring(math.floor(safeNow() * 1000))
@@ -1803,20 +1811,22 @@ function Comm.RunSelfBot(desiredState, callback)
     return false
   end
 
-  safeDelay(SELF_BOT_TIMEOUT_SECONDS, function()
-    local bridge = ensureBridgeState()
-    local pending = bridge.selfBotCommandActive
-    if type(pending) ~= "table" or pending.token ~= token then
-      return
-    end
+  if MultiBot and type(MultiBot.TimerAfter) == "function" then
+    MultiBot.TimerAfter(SELF_BOT_TIMEOUT_SECONDS, function()
+      local bridge = ensureBridgeState()
+      local pending = bridge.selfBotCommandActive
+      if type(pending) ~= "table" or pending.token ~= token then
+        return
+      end
 
-    finishSelfBotRequest("command", token, {
-      status = "timeout",
-      active = type(bridge.selfBotLastActive) == "boolean" and bridge.selfBotLastActive or nil,
-      reason = "TIMEOUT",
-      desiredState = pending.desiredState,
-    })
-  end)
+      finishSelfBotRequest("command", token, {
+        status = "timeout",
+        active = type(bridge.selfBotLastActive) == "boolean" and bridge.selfBotLastActive or nil,
+        reason = "TIMEOUT",
+        desiredState = pending.desiredState,
+      })
+    end)
+  end
 
   return token
 end
@@ -5135,6 +5145,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.capabilitiesResolved = true
     debugPrint("ADDON:RX", "CAPS", payload or "")
     flushPendingStateRefreshes()
+    if state.selfBotCapable == true and type(Comm.RequestSelfBotState) == "function" then
+      Comm.RequestSelfBotState()
+    end
     if MultiBot.RefreshEnchantingEveryButtons then
       MultiBot.RefreshEnchantingEveryButtons()
     end
@@ -5152,6 +5165,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.capabilitiesResolved = true
     debugPrint("ADDON:RX", "CAPS_END")
     flushPendingStateRefreshes()
+    if state.selfBotCapable == true and type(Comm.RequestSelfBotState) == "function" then
+      Comm.RequestSelfBotState()
+    end
     if MultiBot.RefreshEnchantingEveryButtons then
       MultiBot.RefreshEnchantingEveryButtons()
     end

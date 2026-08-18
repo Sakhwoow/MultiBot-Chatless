@@ -806,7 +806,7 @@ function MultiBot.OnBridgeInventoryItemSellResult(botName, result, reason)
         getInventoryItemSellReason(reason)
     ))
 
-    if reason == "SOURCE_STALE" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" then
+    if reason == "SOURCE_STALE" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" or reason == "TIMEOUT" then
         requestInventoryRefresh(0.15, botName)
     end
 end
@@ -833,7 +833,7 @@ function MultiBot.OnBridgeInventoryItemUseResult(botName, result, reason)
         getInventoryItemUseReason(reason)
     ))
 
-    if reason == "SOURCE_STALE" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" then
+    if reason == "SOURCE_STALE" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" or reason == "TIMEOUT" then
         requestInventoryRefresh(0.15, botName)
     end
 end

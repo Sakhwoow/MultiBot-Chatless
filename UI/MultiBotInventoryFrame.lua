@@ -2126,6 +2126,14 @@ MultiBot.OnBridgeInventoryBuybackResult = function(
         return
     end
 
+    if reason == "TIMEOUT" or reason == "BAD_RESPONSE" or reason == "RESPONSE_MISMATCH" then
+        local refreshed = MultiBot.RequestInventoryRefresh
+            and MultiBot.RequestInventoryRefresh(botName, 0.30)
+        if not refreshed and MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then
+            MultiBot.Comm.RequestInventoryExact(botName)
+        end
+    end
+
     if frame and frame.IsShown and frame:IsShown() and frame.botName == botName then
         frame:setStatus(string.format(
             MultiBot.L("inventory.buyback.error", "Buyback failed: %s"),
@@ -3107,7 +3115,7 @@ MultiBot.OnBridgeInventoryItemMoveResult = function(botName, status, reason, src
     if not inventory.IsVisible or not inventory:IsVisible() or botName ~= inventory.name then
         return
     end
-    if status == "OK" then
+    if status == "OK" or reason == "TIMEOUT" or reason == "POSTCONDITION_FAILED" then
         local refreshed = MultiBot.RequestInventoryRefresh
             and MultiBot.RequestInventoryRefresh(botName, 0.30)
         if not refreshed and MultiBot.Comm and MultiBot.Comm.RequestInventoryExact then

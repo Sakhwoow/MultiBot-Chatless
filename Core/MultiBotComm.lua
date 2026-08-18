@@ -1779,8 +1779,12 @@ function Comm.RunInventoryItemEquip(name, srcBag, srcSlot, srcItemId, srcCount)
 
     bridge.inventoryItemEquips[token] = nil
     bridge.lastError = "ITEM_EQUIP_TIMEOUT"
-    if bridge.connected and Comm.RequestInventoryExact then
-      Comm.RequestInventoryExact(pending.botName)
+    if bridge.connected then
+      local refreshed = MultiBot.RequestInventoryRefresh
+        and MultiBot.RequestInventoryRefresh(pending.botName, 0.30)
+      if not refreshed and Comm.RequestInventoryExact then
+        Comm.RequestInventoryExact(pending.botName)
+      end
     end
   end)
 
@@ -2665,6 +2669,7 @@ function Comm.MarkDisconnected(reason)
   state.server = nil
   state.protocol = nil
   state.lastError = reason or nil
+  state.capabilityBatchActive = false
   state.inventoryActive = nil
   state.inventoryExactActive = nil
   state.inventoryExactSnapshots = {}

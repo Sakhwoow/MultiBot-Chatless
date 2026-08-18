@@ -26,6 +26,7 @@ local INVENTORY_BULK_SELL_CAPABILITY = "INVENTORY_BULK_SELL_V1"
 local INVENTORY_OPEN_CAPABILITY = "INVENTORY_OPEN_V1"
 local GROUP_ROLL_CAPABILITY = "GROUP_ROLL_V1"
 local ENCHANT_TRADE_CAPABILITY = "ENCHANT_TRADE_V1"
+local SELF_BOT_TIMEOUT_SECONDS = 5.0
 local GROUP_ROLL_TIMEOUT_SECONDS = 5.0
 local ENCHANT_TRADE_TIMEOUT_SECONDS = 5.0
 local INVENTORY_ITEM_MOVE_TIMEOUT_SECONDS = 5.0
@@ -283,6 +284,11 @@ local function ensureBridgeState()
   state.inventoryOpenCapable = state.inventoryOpenCapable or false
   state.groupRollCapable = state.groupRollCapable or false
   state.enchantTradeCapable = state.enchantTradeCapable or false
+  state.selfBotCapable = state.selfBotCapable or false
+  state.selfBotStateSeq = state.selfBotStateSeq or 0
+  state.selfBotStateActive = state.selfBotStateActive or nil
+  state.selfBotCommandSeq = state.selfBotCommandSeq or 0
+  state.selfBotCommandActive = state.selfBotCommandActive or nil
   state.enchantTradeSeq = state.enchantTradeSeq or 0
   state.enchantTradeActive = state.enchantTradeActive or nil
   state.enchantTradeCommands = state.enchantTradeCommands or {}
@@ -811,6 +817,7 @@ maybeResolveCapabilityFallback = function(generation)
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
     state.enchantTradeCapable = false
+    state.selfBotCapable = false
   end
 
   state.capabilityFallbackDeadline = 0
@@ -1592,6 +1599,282 @@ function Comm.RequestPvpStats(name)
 
   return Comm.Send("GET", "PVP_STATS")
 end
+
+-- MB_ISSUE33_SELF_BOT_V1_BEGIN
+local function finishSelfBotRequest(kind, token, result)
+  local state = ensureBridgeState()
+  local field = kind == "command" and "selfBotCommandActive" or "selfBotStateActive"
+  local pending = state[field]
+  if type(pending) ~= "table" or pending.token ~= token then
+    return false
+  end
+
+  state[field] = nil
+  result = type(result) == "table" and result or {}
+  result.token = token
+  result.kind = kind
+
+  -- Recovery state requests must never promote a cached/local fallback value
+  -- to authoritative UI state. Only a successfully parsed server response may
+  -- carry active through such a request.
+  if pending.authoritativeOnly == true and result.authoritative ~= true then
+    result.active = nil
+  end
+
+  if type(result.active) == "boolean" then
+    state.selfBotLastActive = result.active
+  end
+
+  if result.status == "ok" then
+    state.lastError = nil
+  else
+    state.lastError = "SELF_BOT_" .. tostring(result.reason or "UNKNOWN")
+  end
+
+  if type(result.active) == "boolean" and MultiBot.OnBridgeSelfBotState then
+    MultiBot.OnBridgeSelfBotState(result.active, result)
+  end
+
+  if type(pending.callback) == "function" then
+    pending.callback(result)
+  end
+
+  return true
+end
+
+-- Keep SELF_BOT response parsing outside Comm.HandleAddonMessage. WoW 3.3.5a
+-- uses Lua 5.1, whose function upvalue limit is 60; the main dispatcher is
+-- already close to that limit.
+function Comm.HandleSelfBotAddonMessage(opcode, payload, state)
+  if opcode ~= "SELF_BOT_STATE" and opcode ~= "SELF_BOT_RESULT" then
+    return false
+  end
+
+  state = type(state) == "table" and state or ensureBridgeState()
+
+  local fields = splitFields(payload or "")
+  local kind = opcode == "SELF_BOT_RESULT" and "command" or "state"
+  local pending = kind == "command" and state.selfBotCommandActive or state.selfBotStateActive
+
+  if #fields ~= 4 then
+    if type(pending) == "table" then
+      finishSelfBotRequest(kind, pending.token, {
+        status = "error",
+        active = type(state.selfBotLastActive) == "boolean" and state.selfBotLastActive or nil,
+        reason = "BAD_RESPONSE",
+      })
+    else
+      state.lastError = "SELF_BOT_BAD_RESPONSE"
+    end
+    return true
+  end
+
+  local token = trim(fields[1])
+  local status = string.upper(trim(fields[2]))
+  local activeText = trim(fields[3])
+  local reason = urlDecodeFieldStrict(fields[4], 64, false)
+
+  if type(pending) ~= "table" or pending.token ~= token then
+    return true
+  end
+
+  if not isValidStateToken(token)
+      or (status ~= "OK" and status ~= "ERR")
+      or (activeText ~= "0" and activeText ~= "1")
+      or reason == nil then
+    finishSelfBotRequest(kind, token, {
+      status = "error",
+      active = type(state.selfBotLastActive) == "boolean" and state.selfBotLastActive or nil,
+      reason = "BAD_RESPONSE",
+    })
+    return true
+  end
+
+  state.connected = true
+  finishSelfBotRequest(kind, token, {
+    status = status == "OK" and "ok" or "error",
+    active = activeText == "1",
+    authoritative = true,
+    reason = reason,
+    desiredState = type(pending) == "table" and pending.desiredState or nil,
+  })
+  debugPrint("ADDON:RX", opcode, token, status, activeText, reason)
+  return true
+end
+
+function Comm.HandleSelfBotProtocolError(requestType, token, reason, state)
+  if requestType ~= "SELF_BOT" then
+    return false
+  end
+
+  state = type(state) == "table" and state or ensureBridgeState()
+
+  if type(state.selfBotCommandActive) == "table"
+      and state.selfBotCommandActive.token == token then
+    finishSelfBotRequest("command", token, {
+      status = "error",
+      active = type(state.selfBotLastActive) == "boolean" and state.selfBotLastActive or nil,
+      reason = reason,
+      desiredState = state.selfBotCommandActive.desiredState,
+    })
+  elseif type(state.selfBotStateActive) == "table"
+      and state.selfBotStateActive.token == token then
+    finishSelfBotRequest("state", token, {
+      status = "error",
+      active = type(state.selfBotLastActive) == "boolean" and state.selfBotLastActive or nil,
+      reason = reason,
+    })
+  end
+
+  return true
+end
+
+function Comm.IsSelfBotCapable()
+  local state = ensureBridgeState()
+  return state.connected == true and state.selfBotCapable == true
+end
+
+local function requestSelfBotState(callback, options)
+  local state = ensureBridgeState()
+  options = type(options) == "table" and options or {}
+  local allowDuringCommand = options.allowDuringCommand == true
+  local authoritativeOnly = options.authoritativeOnly == true
+
+  if not state.connected or state.selfBotCapable ~= true then
+    return false
+  end
+  if type(state.selfBotCommandActive) == "table" and not allowDuringCommand then
+    return false
+  end
+  if type(state.selfBotStateActive) == "table" then
+    -- A recovery caller requires its own completion callback. Do not silently
+    -- attach it to an unrelated state request.
+    if authoritativeOnly then
+      return false
+    end
+    return state.selfBotStateActive.token
+  end
+
+  state.selfBotStateSeq = (tonumber(state.selfBotStateSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000))
+      .. "-self-state-" .. tostring(state.selfBotStateSeq)
+  state.selfBotStateActive = {
+    token = token,
+    callback = type(callback) == "function" and callback or nil,
+    authoritativeOnly = authoritativeOnly,
+    startedAt = safeNow(),
+  }
+
+  if not Comm.Send("GET", "SELF_BOT~" .. token) then
+    state.selfBotStateActive = nil
+    state.lastError = "SELF_BOT_STATE_SEND_FAILED"
+    return false
+  end
+
+  if MultiBot and type(MultiBot.TimerAfter) == "function" then
+    MultiBot.TimerAfter(SELF_BOT_TIMEOUT_SECONDS, function()
+      local bridge = ensureBridgeState()
+      local pending = bridge.selfBotStateActive
+      if type(pending) ~= "table" or pending.token ~= token then
+        return
+      end
+
+      finishSelfBotRequest("state", token, {
+        status = "timeout",
+        active = type(bridge.selfBotLastActive) == "boolean" and bridge.selfBotLastActive or nil,
+        reason = "TIMEOUT",
+      })
+    end)
+  end
+
+  return token
+end
+
+function Comm.RequestSelfBotState(callback)
+  return requestSelfBotState(callback, nil)
+end
+
+function Comm.RunSelfBot(desiredState, callback)
+  local state = ensureBridgeState()
+  desiredState = string.upper(trim(desiredState or ""))
+
+  if not state.connected or state.selfBotCapable ~= true then
+    return false
+  end
+  if desiredState ~= "ENABLE" and desiredState ~= "DISABLE" then
+    return false
+  end
+  if type(state.selfBotCommandActive) == "table" then
+    return false
+  end
+
+  -- A state response created before this mutation is stale by definition.
+  local staleState = state.selfBotStateActive
+  if type(staleState) == "table" then
+    finishSelfBotRequest("state", staleState.token, {
+      status = "error",
+      reason = "SUPERSEDED",
+    })
+  end
+
+  state.selfBotCommandSeq = (tonumber(state.selfBotCommandSeq) or 0) + 1
+  local token = tostring(math.floor(safeNow() * 1000))
+      .. "-self-cmd-" .. tostring(state.selfBotCommandSeq)
+  state.selfBotCommandActive = {
+    token = token,
+    desiredState = desiredState,
+    callback = type(callback) == "function" and callback or nil,
+    startedAt = safeNow(),
+  }
+
+  if not Comm.Send("RUN", "SELF_BOT~" .. token .. "~" .. desiredState) then
+    state.selfBotCommandActive = nil
+    state.lastError = "SELF_BOT_SEND_FAILED"
+    return false
+  end
+
+  if MultiBot and type(MultiBot.TimerAfter) == "function" then
+    MultiBot.TimerAfter(SELF_BOT_TIMEOUT_SECONDS, function()
+      local bridge = ensureBridgeState()
+      local pending = bridge.selfBotCommandActive
+      if type(pending) ~= "table" or pending.token ~= token then
+        return
+      end
+
+      local desiredAtTimeout = pending.desiredState
+      local recoveryToken = requestSelfBotState(function(stateResult)
+        local current = ensureBridgeState().selfBotCommandActive
+        if type(current) ~= "table" or current.token ~= token then
+          return
+        end
+
+        finishSelfBotRequest("command", token, {
+          status = "timeout",
+          active = type(stateResult) == "table"
+              and type(stateResult.active) == "boolean"
+              and stateResult.active
+              or nil,
+          reason = "TIMEOUT",
+          desiredState = current.desiredState,
+        })
+      end, {
+        allowDuringCommand = true,
+        authoritativeOnly = true,
+      })
+
+      if not recoveryToken then
+        finishSelfBotRequest("command", token, {
+          status = "timeout",
+          reason = "TIMEOUT_STATE_REFRESH_FAILED",
+          desiredState = desiredAtTimeout,
+        })
+      end
+    end)
+  end
+
+  return token
+end
+-- MB_ISSUE33_SELF_BOT_V1_END
 
 function Comm.RequestInventory(name)
   local state = ensureBridgeState()
@@ -2691,6 +2974,33 @@ function Comm.MarkDisconnected(reason)
   state.inventoryExactActive = nil
   state.inventoryExactSnapshots = {}
 
+  local selfBotStatePending = state.selfBotStateActive
+  local selfBotCommandPending = state.selfBotCommandActive
+  state.selfBotStateActive = nil
+  state.selfBotCommandActive = nil
+  state.selfBotLastActive = nil
+
+  if type(selfBotStatePending) == "table" and type(selfBotStatePending.callback) == "function" then
+    selfBotStatePending.callback({
+      status = "error",
+      active = nil,
+      reason = "DISCONNECTED",
+      token = selfBotStatePending.token,
+      kind = "state",
+    })
+  end
+
+  if type(selfBotCommandPending) == "table" and type(selfBotCommandPending.callback) == "function" then
+    selfBotCommandPending.callback({
+      status = "error",
+      active = nil,
+      reason = "DISCONNECTED",
+      token = selfBotCommandPending.token,
+      kind = "command",
+      desiredState = selfBotCommandPending.desiredState,
+    })
+  end
+
   for _, command in pairs(state.inventoryItemMoves or {}) do
     if MultiBot.OnBridgeInventoryItemMoveResult then
       MultiBot.OnBridgeInventoryItemMoveResult(
@@ -2818,6 +3128,7 @@ function Comm.MarkDisconnected(reason)
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
   state.enchantTradeCapable = false
+  state.selfBotCapable = false
   state.stateFramingCapable = false
   state.capabilityFallbackDeadline = 0
   state.capabilityFallbackGeneration = 0
@@ -4801,6 +5112,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.inventoryOpenCapable = false
     state.groupRollCapable = false
     state.enchantTradeCapable = false
+    state.selfBotCapable = false
     state.capabilityBatchActive = true
     state.capabilitiesResolved = false
     debugPrint("ADDON:RX", "CAPS_BEGIN")
@@ -4825,6 +5137,7 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
       state.inventoryOpenCapable = false
       state.groupRollCapable = false
       state.enchantTradeCapable = false
+      state.selfBotCapable = false
     end
 
     for capability in string.gmatch(payload or "", "([^,]+)") do
@@ -4861,6 +5174,8 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
         state.groupRollCapable = true
       elseif capability == ENCHANT_TRADE_CAPABILITY then
         state.enchantTradeCapable = true
+      elseif capability == "SELF_BOT_V1" then
+        state.selfBotCapable = true
       end
     end
 
@@ -4874,6 +5189,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.capabilitiesResolved = true
     debugPrint("ADDON:RX", "CAPS", payload or "")
     flushPendingStateRefreshes()
+    if state.selfBotCapable == true and type(Comm.RequestSelfBotState) == "function" then
+      Comm.RequestSelfBotState()
+    end
     if MultiBot.RefreshEnchantingEveryButtons then
       MultiBot.RefreshEnchantingEveryButtons()
     end
@@ -4891,6 +5209,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
     state.capabilitiesResolved = true
     debugPrint("ADDON:RX", "CAPS_END")
     flushPendingStateRefreshes()
+    if state.selfBotCapable == true and type(Comm.RequestSelfBotState) == "function" then
+      Comm.RequestSelfBotState()
+    end
     if MultiBot.RefreshEnchantingEveryButtons then
       MultiBot.RefreshEnchantingEveryButtons()
     end
@@ -4947,6 +5268,12 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
     return true
   end
+
+  -- MB_ISSUE33_SELF_BOT_V1_RX_BEGIN
+  if Comm.HandleSelfBotAddonMessage(opcode, payload, state) then
+    return true
+  end
+  -- MB_ISSUE33_SELF_BOT_V1_RX_END
 
   if opcode == "ROSTER" then
     state.connected = true
@@ -6931,7 +7258,9 @@ function Comm.HandleAddonMessage(prefix, message, distribution, sender)
 
       requestType = requestType and string.upper(trim(requestType)) or nil
       if requestType and isValidStateToken(token) and reason then
-        if requestType == "GROUP_ROLL" and state.groupRollCommands[token] then
+        if Comm.HandleSelfBotProtocolError(requestType, token, reason, state) then
+          return true
+        elseif requestType == "GROUP_ROLL" and state.groupRollCommands[token] then
           finishGroupRollCommand(token, {
             status = "error",
             matched = 0,
@@ -7007,6 +7336,7 @@ function Comm.OnPlayerEnteringWorld()
   state.inventoryOpenCapable = false
   state.groupRollCapable = false
   state.enchantTradeCapable = false
+  state.selfBotCapable = false
   state.strategyMutationCommands = {}
   state.details = {}
   state.stats = {}

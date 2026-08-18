@@ -2465,7 +2465,19 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 		end
 	end
 
+	local function inventoryViewChanged()
+		local inventory = MultiBot.inventory
+		local activeBotName = inventory and tostring(inventory.name or "") or ""
+		return inventory and inventory.IsVisible and inventory:IsVisible()
+			and activeBotName ~= "" and string.lower(activeBotName) ~= string.lower(tostring(botName))
+	end
+
 	local function doRefresh()
+		-- Delayed mutation refreshes must not steal a view that has switched bots.
+		if inventoryViewChanged() then
+			return true
+		end
+
 		local waitButton = getInventoryUnitButton(botName)
 		local bridge = MultiBot.bridge or nil
 		local comm = MultiBot.Comm or nil
@@ -2527,6 +2539,10 @@ MultiBot.RequestInventoryRefresh = function(botName, delay, options)
 		if bridge then
 			bridge.lastError = nil
 		end
+		return true
+	end
+
+	if inventoryViewChanged() then
 		return true
 	end
 

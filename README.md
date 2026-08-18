@@ -105,6 +105,8 @@ GET~GAMEOBJECTS
 GET~FORMATIONS
 RUN~CRAFT_RECIPE
 RUN~ITEM_ACTION
+RUN~ITEM_EQUIP
+RUN~ITEM_UNEQUIP
 RUN~OUTFIT
 RUN~RTI
 RUN~COMBAT
@@ -139,6 +141,13 @@ STATE_FRAMING_V1
 STRATEGY_MUTATION_V1
 OUTFIT_V1
 INVENTORY_V1
+INVENTORY_EXACT_V1
+ITEM_MOVE_V1
+ITEM_EQUIP_V1
+ITEM_UNEQUIP_V1
+ITEM_USE_V1
+ITEM_SELL_SINGLE_V1
+VENDOR_BUYBACK_V1
 INVENTORY_BULK_SELL_V1
 INVENTORY_OPEN_V1
 GROUP_ROLL_V1
@@ -149,7 +158,7 @@ ENCHANT_TRADE_V1
 
 `STRATEGY_MUTATION_V1` provides structured `co/nc` mutations through `RUN~STRATEGY` and completion through `STRATEGY_ACK`. The bridge reports matched, succeeded and failed bot counts, while the addon applies explicit timeout and rejection diagnostics.
 
-`INVENTORY_V1` provides native inventory read/refresh. `INVENTORY_BULK_SELL_V1` and `INVENTORY_OPEN_V1` gate the current bulk-sell and `OPEN_ITEMS` bridge paths. `GROUP_ROLL_V1` gates the group Roll workflow; normal rolls and item-linked rolls are tokenized and completed through a structured `GROUP_ROLL_ACK`. `ENCHANT_TRADE_V1` gates the Enchanting Trade Service: the addon lists only known Enchanting spells exposed by the bot, uses the native WoW Trade window and the non-traded item slot, then requests one validated numeric spell ID through the bridge.
+`INVENTORY_V1` provides the established native inventory read/refresh path. `INVENTORY_EXACT_V1` complements it with exact physical topology for Backpack, Bag 1..4 and Keyring, including empty slots and per-container filtering in the inventory UI. `ITEM_MOVE_V1` adds server-authoritative whole-stack drag/drop between allowed physical slots. The addon keeps only synthetic drag state: it does not call `PickupContainerItem`, `PickupInventoryItem`, `GetCursorInfo` or `ClearCursor`, and it does not mutate the displayed inventory optimistically; an exact snapshot refresh follows the server result. Stack splitting remains outside this capability. `ITEM_EQUIP_V1` equips an exact item from Backpack or Bag 1..4 through a structured bridge request and waits for the authoritative result before refreshing. `ITEM_UNEQUIP_V1` routes Inspect right-click through the exact equipment slot plus item ID, converts client Inspect slots 1..19 to Core slots 0..18, waits for the structured result and then refreshes. The historical `ue` whisper fallback is used only when `MultiBot.allowLegacyChatFallback == true`; normal bridge-first configuration keeps that fallback disabled. `ITEM_USE_V1` uses the exact physical source, waits for the structured `INVENTORY_ITEM_USE` result and delegates execution to the native use-item path. `ITEM_DESTROY` is a specialized exact-item destruction path with server-side source revalidation and an authoritative result. `ITEM_SELL_SINGLE_V1` validates the exact source and nearby vendor before native single-item sale and returns `INVENTORY_ITEM_SELL`. `VENDOR_BUYBACK_V1` exposes a structured Buyback list/result flow and uses the native Buyback handler before authoritative inventory/list refreshes. `INVENTORY_BULK_SELL_V1` and `INVENTORY_OPEN_V1` gate the current bulk-sell and `OPEN_ITEMS` bridge paths. `GROUP_ROLL_V1` gates the group Roll workflow; normal rolls and item-linked rolls are tokenized and completed through a structured `GROUP_ROLL_ACK`. `ENCHANT_TRADE_V1` gates the Enchanting Trade Service: the addon lists only known Enchanting spells exposed by the bot, uses the native WoW Trade window and the non-traded item slot, then requests one validated numeric spell ID through the bridge.
 
 The migration is intentionally incremental. The Warlock stone, soulstone, pet and curse selectors are now migrated to structured `RUN~STRATEGY` mutations. When those selectors use the bridge, the addon waits for authoritative server `STATE` data before committing the selected UI state instead of applying an optimistic local state. Other specialized legacy UI paths still issue Playerbots chat commands directly and must be migrated before the addon can be described as fully chatless.
 
@@ -230,7 +239,35 @@ The endpoint and safe Firestone/Spellstone switching code are present, but the p
   </tr>
   <tr>
     <td>Inventory</td>
-    <td><strong>Bridge-first</strong> native read/refresh through <code>INVENTORY_V1</code>, with icons and item tooltips</td>
+    <td><strong>Bridge-first, exact and bag-aware</strong> — <code>INVENTORY_V1</code> remains the established read/refresh path, while <code>INVENTORY_EXACT_V1</code> exposes Backpack, Bag 1..4 and Keyring with physical locations, empty slots and container filters</td>
+  </tr>
+  <tr>
+    <td>Inventory item move</td>
+    <td><strong>Bridge-first and runtime validated</strong> — <code>ITEM_MOVE_V1</code> moves one whole stack by synthetic addon drag/drop between allowed physical slots, waits for the structured server result and refreshes the exact snapshot without using the native player cursor APIs</td>
+  </tr>
+  <tr>
+    <td>Inventory item equip</td>
+    <td><strong>Bridge-first and runtime validated</strong> — <code>ITEM_EQUIP_V1</code> equips one exact item from Backpack or Bag 1..4 through the Bridge, waits for the structured result and refreshes authoritatively without optimistic UI mutation</td>
+  </tr>
+  <tr>
+    <td>Inspect item unequip</td>
+    <td><strong>Bridge-first and runtime validated</strong> — <code>ITEM_UNEQUIP_V1</code> routes Inspect right-click by exact equipment slot and item ID; the legacy <code>ue</code> whisper is available only when <code>MultiBot.allowLegacyChatFallback == true</code> and is disabled in normal bridge-first configuration</td>
+  </tr>
+  <tr>
+    <td>Inventory item use</td>
+    <td><strong>Bridge-first and runtime validated</strong> — <code>ITEM_USE_V1</code> revalidates the exact physical source, executes through the native use-item path, returns a structured result and refreshes authoritatively</td>
+  </tr>
+  <tr>
+    <td>Inventory item destroy</td>
+    <td><strong>Bridge-first and runtime validated</strong> — <code>ITEM_DESTROY</code> uses a specialized exact-item request with server-side source revalidation and an authoritative result</td>
+  </tr>
+  <tr>
+    <td>Inventory item single sell</td>
+    <td><strong>Bridge-first and runtime validated</strong> — <code>ITEM_SELL_SINGLE_V1</code> revalidates the exact source and nearby vendor, performs the native sale and returns a structured <code>INVENTORY_ITEM_SELL</code> result</td>
+  </tr>
+  <tr>
+    <td>Vendor Buyback</td>
+    <td><strong>Bridge-first and runtime validated</strong> — <code>VENDOR_BUYBACK_V1</code> lists authoritative Buyback entries, executes one native buyback after server validation and refreshes inventory and Buyback state</td>
   </tr>
   <tr>
     <td>Inventory bulk sell</td>
@@ -560,7 +597,14 @@ Implemented bridge-first / chatless areas:
 - Stats refresh.
 - PvP stats refresh.
 - Talent spec list refresh.
-- Inventory read/refresh through `INVENTORY_V1`, with icons and item tooltips.
+- Inventory read/refresh through `INVENTORY_V1`, complemented by `INVENTORY_EXACT_V1` for bag-aware physical topology across Backpack, Bag 1..4 and Keyring, including empty slots and per-container filters.
+- Whole-stack inventory drag/drop through `ITEM_MOVE_V1`, with synthetic addon drag state, no native player cursor APIs, no optimistic inventory mutation and an exact snapshot refresh after the structured server result. Stack splitting remains out of scope.
+- Exact inventory equip through `ITEM_EQUIP_V1`, with source identity revalidation, authoritative result handling and no optimistic UI mutation.
+- Exact Inspect unequip through `ITEM_UNEQUIP_V1`, with exact equipment slot/item identity and legacy `ue` fallback disabled unless explicitly enabled.
+- Exact item use through `ITEM_USE_V1`, with native use-item execution, source revalidation, structured result handling and localized failure reasons.
+- Exact item destruction through the specialized `ITEM_DESTROY` path with server-side source revalidation.
+- Exact single-item vendor sale through `ITEM_SELL_SINGLE_V1`, with nearby-vendor validation, protected-item guards, replay/rate limiting and structured result handling.
+- Vendor Buyback through `VENDOR_BUYBACK_V1`, with structured list/result messages, native Buyback execution and authoritative inventory/list refreshes.
 - Bulk inventory sell through `INVENTORY_BULK_SELL_V1` when supported; `SELL_VENDOR` is bridge-first in normal current operation, while legacy compatibility fallback remains available and SELL_GREY follow-up is deferred.
 - `OPEN_ITEMS` through `INVENTORY_OPEN_V1`, with structured result handling and no silent chat fallback in the normal bridge-first path.
 - Group Roll through `GROUP_ROLL_V1`: normal 0–100 roll and Shift+click item roll, tokenized pending state, duplicate-send protection, timeout/cleanup handling and structured `GROUP_ROLL_ACK`.
@@ -622,7 +666,7 @@ Kept intentionally:
 
 # Remaining Work
 
-The current line includes bridge-first inventory refresh, outfits, Sell Vendor, `OPEN_ITEMS`, Group Roll and the runtime-validated Enchanting Trade Service in addition to the previously migrated UI areas. The roadmap is intentionally continuing feature-family by feature-family rather than jumping directly to final cleanup.
+The current line includes bridge-first inventory refresh, exact bag-aware inventory topology, native whole-stack item drag/drop, outfits, Sell Vendor, `OPEN_ITEMS`, Group Roll and the runtime-validated Enchanting Trade Service in addition to the previously migrated UI areas. The roadmap is intentionally continuing feature-family by feature-family rather than jumping directly to final cleanup.
 
 Next normal roadmap work:
 

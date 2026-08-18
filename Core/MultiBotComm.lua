@@ -93,6 +93,17 @@ local function trim(value)
   return value:gsub("^%s+", ""):gsub("%s+$", "")
 end
 
+local function isInventoryViewCurrent(name)
+  local inventory = MultiBot and MultiBot.inventory or nil
+  if not inventory or not inventory.IsVisible or not inventory:IsVisible() then
+    return true
+  end
+
+  local activeName = trim(inventory.name)
+  name = trim(name)
+  return activeName == "" or name == "" or string.lower(activeName) == string.lower(name)
+end
+
 local function splitOnce(value, separator)
   if type(value) ~= "string" or value == "" then
     return "", ""
@@ -1588,6 +1599,9 @@ function Comm.RequestInventory(name)
   if name == "" or not state.connected or state.inventoryCapable ~= true then
     return false
   end
+  if not isInventoryViewCurrent(name) then
+    return false
+  end
 
   state.inventorySeq = (tonumber(state.inventorySeq) or 0) + 1
   local token = tostring(math.floor(safeNow() * 1000)) .. "-" .. tostring(state.inventorySeq)
@@ -1611,6 +1625,9 @@ function Comm.RequestInventoryExact(name)
   local state = ensureBridgeState()
   name = trim(name)
   if name == "" or not state.connected or state.inventoryExactCapable ~= true then
+    return false
+  end
+  if not isInventoryViewCurrent(name) then
     return false
   end
 
@@ -4246,6 +4263,10 @@ local function getActiveInventoryRequest(botName, token)
   if string.lower(trim(botName)) ~= tostring(active.botNameKey or "") then
     return nil
   end
+  if not isInventoryViewCurrent(active.botName) then
+    state.inventoryActive = nil
+    return nil
+  end
 
   return active
 end
@@ -4269,6 +4290,10 @@ local function getActiveInventoryExactRequest(botName, token)
   end
 
   if string.lower(trim(botName)) ~= tostring(active.botNameKey or "") then
+    return nil
+  end
+  if not isInventoryViewCurrent(active.botName) then
+    state.inventoryExactActive = nil
     return nil
   end
 

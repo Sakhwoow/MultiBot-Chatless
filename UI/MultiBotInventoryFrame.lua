@@ -2936,6 +2936,11 @@ function MultiBot.InitializeInventoryFrame()
                 return false
             end
 
+            local activeBotName = tostring(self.name or "")
+            if activeBotName ~= "" and string.lower(activeBotName) ~= string.lower(tostring(targetBotName)) then
+                return false
+            end
+
             return prepareInventoryForBot(targetBotName)
         end
 
